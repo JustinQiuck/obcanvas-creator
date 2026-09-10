@@ -1,0 +1,19 @@
+.DS_Store
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# 本机测试资料库、生成结果与临时运行数据
+.local/
+.obsidian/
+
+# 本机凭据
+.env
+.env.*
+!.env.example
+
+# Obsidian 插件根目录的构建产物
+/main.js
+/main.js.map
+/styles.css
