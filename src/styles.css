@@ -1,0 +1,24 @@
+.obcanvas-root { padding: 0 !important; }
+.obcanvas-root .obcanvas-workbench { max-width: 1200px; margin: 0 auto; padding: 28px; color: var(--text-normal); }
+.obcanvas-root .obcanvas-header { display: flex; justify-content: space-between; align-items: start; gap: 16px; padding-bottom: 22px; border-bottom: 1px solid var(--background-modifier-border); }
+.obcanvas-root h1 { font-size: 24px; margin: 0 0 8px; }
+.obcanvas-root h2 { font-size: 15px; margin: 0 0 16px; }
+.obcanvas-root p { color: var(--text-muted); line-height: 1.6; margin: 8px 0; }
+.obcanvas-root .obcanvas-stage, .obcanvas-root .obcanvas-hint { font-size: 12px; color: var(--text-muted); }
+.obcanvas-root .obcanvas-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 20px 0; }
+.obcanvas-root .obcanvas-columns { display: grid; grid-template-columns: minmax(140px, 210px) minmax(0, 1fr); gap: 28px; }
+.obcanvas-root .obcanvas-shot-list { padding-top: 20px; }
+.obcanvas-root .obcanvas-shot-list button { width: 100%; height: auto; text-align: left; justify-content: start; white-space: normal; box-shadow: none; background: transparent; padding: 12px; gap: 10px; }
+.obcanvas-root .obcanvas-shot-list button.is-selected { background: var(--background-secondary); color: var(--text-accent); }
+.obcanvas-root .obcanvas-shot-list button span { font-size: 11px; opacity: .65; }
+.obcanvas-root .obcanvas-shot-card { background: var(--background-primary); border: 1px solid var(--background-modifier-border); border-radius: 12px; padding: 24px; }
+.obcanvas-root .obcanvas-card-heading { display: flex; justify-content: space-between; gap: 16px; }
+.obcanvas-root .obcanvas-card-heading span { font-size: 12px; color: var(--text-muted); }
+.obcanvas-root .obcanvas-shot-card label { display: flex; flex-direction: column; gap: 9px; font-size: 13px; margin-bottom: 20px; }
+.obcanvas-root .obcanvas-shot-card input, .obcanvas-root .obcanvas-shot-card textarea { width: 100%; font: inherit; }
+.obcanvas-root .obcanvas-shot-card textarea { resize: vertical; line-height: 1.7; min-height: 220px; }
+.obcanvas-root footer { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+.obcanvas-root .obcanvas-empty { padding: 50px 24px; text-align: center; }
+.obcanvas-root .obcanvas-alert { padding: 12px; border: 1px solid var(--text-error); border-radius: 6px; margin: 12px 0; }
+.obcanvas-root .obcanvas-alert p, .obcanvas-root [data-save-status="error"], .obcanvas-root [data-save-status="conflict"] { color: var(--text-error); }
+@media (max-width: 620px) { .obcanvas-root .obcanvas-workbench { padding: 16px; } .obcanvas-root .obcanvas-columns { grid-template-columns: 1fr; gap: 12px; } .obcanvas-root .obcanvas-header { flex-direction: column; } }

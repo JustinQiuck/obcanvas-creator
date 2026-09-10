@@ -1,0 +1,9 @@
+{
+  "id": "obcanvas-creator",
+  "name": "影视画布",
+  "version": "0.1.0",
+  "minAppVersion": "1.13.7",
+  "description": "在画布视图中整理镜头，与本地笔记双向保存。",
+  "author": "JustinQiuck",
+  "isDesktopOnly": true
+}

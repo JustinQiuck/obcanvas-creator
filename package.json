@@ -1,0 +1,31 @@
+{
+  "name": "obcanvas-creator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "node esbuild.config.mjs",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "prepare:test-vault": "npm run build && node scripts/prepare-test-vault.mjs",
+    "launch:test-vault": "node scripts/launch-test-obsidian.mjs",
+    "test:host": "node scripts/test-obsidian.mjs",
+    "test:host:reopen": "node scripts/test-obsidian.mjs --reopen",
+    "stop:test-vault": "node scripts/launch-test-obsidian.mjs --stop"
+  },
+  "dependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "yaml": "2.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.4",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "esbuild": "0.28.2",
+    "obsidian": "1.13.1",
+    "playwright-core": "1.63.0",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2"
+  }
+}
