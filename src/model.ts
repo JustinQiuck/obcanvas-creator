@@ -1,9 +1,11 @@
-import { isMap, parseDocument, stringify } from 'yaml';
+import { isMap, isSeq, parseDocument, stringify } from 'yaml';
 
 export type RecordKind = 'scene' | 'shot';
+export type MediaRef = { id: string; path: string };
+export function validMediaPath(path: string) { return !!path && !/^(?:[a-z]+:|\/)/i.test(path) && !path.includes('\\') && !path.split('/').some(p => !p || p === '.' || p === '..') && !/[\x00-\x1f]/.test(path); }
 export type FilmRecord = {
   id: string; kind: RecordKind; version: 1; title: string; body: string;
-  sceneId?: string; path: string;
+  sceneId?: string; path: string; media?: MediaRef[];
 };
 export type Draft = Pick<FilmRecord, 'title' | 'body'>;
 export class RecordError extends Error {}
@@ -28,7 +30,27 @@ export function parseRecord(source: string, path: string): FilmRecord | null {
   if (!object(meta) || meta.version !== 1) throw new RecordError('不支持的记录版本，请保留原文件。');
   if ((meta.kind !== 'scene' && meta.kind !== 'shot') || typeof meta.id !== 'string' || !meta.id.trim() || typeof meta.title !== 'string' || !meta.title.trim()) throw new RecordError('记录缺少有效的类型、编号或标题。');
   if (meta.kind === 'shot' && (typeof meta.sceneId !== 'string' || !meta.sceneId.trim())) throw new RecordError('镜头缺少所属场次编号。');
-  return { id: meta.id, kind: meta.kind, version: 1, title: meta.title, body: note.body, path, ...(meta.kind === 'shot' ? { sceneId: meta.sceneId as string } : {}) };
+  if (meta.media !== undefined && (!Array.isArray(meta.media) || !meta.media.every(m => object(m) && typeof m.id === 'string' && !!m.id.trim() && typeof m.path === 'string' && validMediaPath(m.path)) || new Set(meta.media.map(m => m.id)).size !== meta.media.length)) throw new RecordError('素材关联格式无效，请保留并检查笔记。');
+  return { id: meta.id, kind: meta.kind, version: 1, title: meta.title, body: note.body, path, ...(meta.media ? { media: meta.media as MediaRef[] } : {}), ...(meta.kind === 'shot' ? { sceneId: meta.sceneId as string } : {}) };
+}
+export function patchMedia(source: string, shotId: string, edit: (items: MediaRef[]) => MediaRef[]) {
+  const latest = parseRecord(source, '');
+  if (!latest || latest.kind !== 'shot' || latest.id !== shotId) throw new ConflictError('镜头身份已变化，请重新载入。');
+  const next = edit(latest.media ?? []);
+  if (JSON.stringify(next) === JSON.stringify(latest.media ?? [])) return source;
+  const note = splitNote(source)!;
+  // Preserve unknown per-media fields and comments on existing nodes.
+  const previous = note.document.getIn(['obcanvas', 'media'], true);
+  const nodes = new Map((latest.media ?? []).map((m, i) => [m.id, isSeq(previous) ? previous.items[i] : undefined]));
+  const sequence = note.document.createNode(next as unknown[]);
+  if ('items' in sequence) next.forEach((m, i) => {
+    const node = nodes.get(m.id);
+    if (isMap(node)) { node.set('path', m.path); sequence.items[i] = node; }
+  });
+  note.document.setIn(['obcanvas', 'media'], sequence);
+  const result = `${note.bom}---${note.eol}${note.document.toString().replace(/\n/g, note.eol)}---${note.eol}${note.body}`;
+  parseRecord(result, '');
+  return result;
 }
 export function newRecord(kind: RecordKind, id: string, title: string, sceneId?: string) {
   return `---\n${stringify({ obcanvas: { version: 1, kind, id, title, ...(kind === 'shot' ? { sceneId } : {}) } })}---\n`;

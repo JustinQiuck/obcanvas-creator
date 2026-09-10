@@ -11,6 +11,9 @@
     "launch:test-vault": "node scripts/launch-test-obsidian.mjs",
     "test:host": "node scripts/test-obsidian.mjs",
     "test:host:reopen": "node scripts/test-obsidian.mjs --reopen",
+    "prepare:test-media": "node scripts/prepare-media-fixtures.mjs",
+    "test:canvas-media": "node scripts/test-canvas-media.mjs",
+    "test:canvas-media:reopen": "node scripts/test-canvas-media.mjs --reopen",
     "stop:test-vault": "node scripts/launch-test-obsidian.mjs --stop"
   },
   "dependencies": {

@@ -1,5 +1,5 @@
 import type { Vault, TFile } from 'obsidian';
-import { FilmRecord, Draft, RecordError, newRecord, parseRecord, patchRecord } from '../model';
+import { FilmRecord, Draft, RecordError, newRecord, parseRecord, patchRecord, patchMedia, type MediaRef } from '../model';
 
 export const PROJECT_ROOT = '影视项目';
 export type Catalog = { records: FilmRecord[]; problems: string[]; loading: boolean };
@@ -64,6 +64,13 @@ export class VaultRecords {
     await this.vault.create(path, source);
     await this.refresh();
     return parseRecord(source, path)!;
+  }
+  async editMedia(shotId: string, edit: (items: MediaRef[]) => MediaRef[]) {
+    const { entries } = await this.scan();
+    const entry = entries.find(e => e.record.id === shotId && e.record.kind === 'shot');
+    if (!entry) throw new RecordError('镜头不存在、编号重复或无法读取，未修改关联。');
+    await this.vault.process(entry.file, current => patchMedia(current, shotId, edit));
+    await this.refresh();
   }
 }
 export function errorMessage(error: unknown) { return error instanceof Error ? error.message : '操作失败，请重试。'; }

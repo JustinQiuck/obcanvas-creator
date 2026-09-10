@@ -1,4 +1,4 @@
-.obcanvas-root { padding: 0 !important; }
+.obcanvas-root { padding: 0 !important; container-type: inline-size; }
 .obcanvas-root .obcanvas-workbench { max-width: 1200px; margin: 0 auto; padding: 28px; color: var(--text-normal); }
 .obcanvas-root .obcanvas-header { display: flex; justify-content: space-between; align-items: start; gap: 16px; padding-bottom: 22px; border-bottom: 1px solid var(--background-modifier-border); }
 .obcanvas-root h1 { font-size: 24px; margin: 0 0 8px; }
@@ -22,3 +22,29 @@
 .obcanvas-root .obcanvas-alert { padding: 12px; border: 1px solid var(--text-error); border-radius: 6px; margin: 12px 0; }
 .obcanvas-root .obcanvas-alert p, .obcanvas-root [data-save-status="error"], .obcanvas-root [data-save-status="conflict"] { color: var(--text-error); }
 @media (max-width: 620px) { .obcanvas-root .obcanvas-workbench { padding: 16px; } .obcanvas-root .obcanvas-columns { grid-template-columns: 1fr; gap: 12px; } .obcanvas-root .obcanvas-header { flex-direction: column; } }
+/* The canvas alone retains infinite-canvas's warm neutral palette. */
+.obcanvas-root .obcanvas-workbench { max-width: none; padding: 20px; }
+.obcanvas-root .obcanvas-columns { grid-template-columns: minmax(260px, 1.35fr) minmax(300px, 1fr); gap: 18px; align-items: start; }
+.obcanvas-root .obcanvas-surface { position: relative; height: 570px; min-height: 320px; overflow: hidden; user-select: none; touch-action: none; border: 1px solid var(--background-modifier-border); border-radius: 12px; }
+.obcanvas-root .obcanvas-surface:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 2px; }
+.obcanvas-root .obcanvas-grid { position: absolute; inset: 0; pointer-events: none; opacity: .4; }
+.obcanvas-root .obcanvas-world { position: absolute; transform-origin: top left; }
+.obcanvas-root .obcanvas-node { position: absolute; display: flex; flex-direction: column; align-items: start; text-align: left; width: 260px; height: 194px; white-space: normal; padding: 18px; gap: 10px; border: 1px solid var(--obcanvas-node-border); border-radius: 10px; background: var(--obcanvas-node-panel); color: inherit; box-shadow: 0 6px 18px #00000012; cursor: move; touch-action: none; }
+.obcanvas-root .obcanvas-node.is-selected { border-color: var(--obcanvas-node-active); box-shadow: 0 0 0 1px var(--obcanvas-node-active); }
+.obcanvas-root .obcanvas-node strong { font-size: 16px; overflow: hidden; text-overflow: ellipsis; max-width: 100%; white-space: nowrap; }
+.obcanvas-root .obcanvas-node-body { font-size: 13px; line-height: 1.6; opacity: .78; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; flex: 1; }
+.obcanvas-root .obcanvas-node-kicker { font-size: 11px; opacity: .6; }
+.obcanvas-root .obcanvas-canvas-tools { position: absolute; bottom: 14px; left: 14px; display: flex; gap: 6px; align-items: center; padding: 6px; border: 1px solid var(--obcanvas-node-border); border-radius: 8px; background: var(--obcanvas-node-panel); }
+.obcanvas-root .obcanvas-canvas-tools button { font-size: 12px; }
+.obcanvas-root .obcanvas-canvas-tools button[aria-pressed="true"] { background: var(--interactive-accent); color: var(--text-on-accent); }
+.obcanvas-root .obcanvas-canvas-tools span { font-size: 11px; min-width: 35px; }
+.obcanvas-root .obcanvas-media-panel { border-top: 1px solid var(--background-modifier-border); margin-top: 20px; padding-top: 20px; }
+.obcanvas-root .obcanvas-media-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.obcanvas-root .obcanvas-media-grid figure { margin: 0; min-width: 0; border: 1px solid var(--background-modifier-border); border-radius: 8px; padding: 10px; }
+.obcanvas-root .obcanvas-media-grid img, .obcanvas-root .obcanvas-media-grid video { display: block; width: 100%; max-height: 240px; object-fit: contain; background: #151412; border-radius: 4px; }
+.obcanvas-root .obcanvas-media-grid figcaption { overflow-wrap: anywhere; font-size: 12px; margin: 8px 0; color: var(--text-muted); }
+.obcanvas-root .obcanvas-media-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.obcanvas-root .obcanvas-media-actions button { font-size: 12px; }
+.obcanvas-root .obcanvas-media-error { color: var(--text-error); }
+@media (max-width: 900px) { .obcanvas-root .obcanvas-columns { grid-template-columns: minmax(0, 1fr); } .obcanvas-root .obcanvas-surface { height: 380px; } }
+@container (max-width: 760px) { .obcanvas-root .obcanvas-columns { grid-template-columns: minmax(0, 1fr); } .obcanvas-root .obcanvas-surface { height: 380px; } }

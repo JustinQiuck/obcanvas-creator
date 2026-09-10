@@ -4,6 +4,7 @@ const root = resolve('.local/test-vault');
 const plugin = join(root, '.obsidian/plugins/obcanvas-creator');
 await mkdir(plugin, { recursive: true });
 for (const name of ['manifest.json', 'main.js', 'styles.css']) await copyFile(name, join(plugin, name));
+await copyFile('licenses/infinite-canvas-MIT.txt', join(plugin, 'infinite-canvas-MIT.txt'));
 // 仅在首次创建时写入测试库配置，重装插件保留笔记、草稿和工作区。
 async function initial(relative, content) {
   const path = join(root, relative);

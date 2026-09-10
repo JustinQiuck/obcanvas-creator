@@ -75,6 +75,7 @@ try {
       await second.locator('[data-save-status="conflict"]').waitFor();
       assert.equal(await second.getByLabel('镜头标题', { exact: true }).inputValue(), '第二个视图的修改');
       await second.getByRole('button', { name: '放弃本地修改，载入笔记', exact: true }).click();
+      await page.waitForFunction(() => [...document.querySelectorAll('.obcanvas-root input[aria-label="镜头标题"]')].filter(el => el.checkVisibility()).every(el => el.value === '第一个视图已保存'));
       assert.equal(await second.getByLabel('镜头标题', { exact: true }).inputValue(), '第一个视图已保存');
     });
     await check('真实 Vault 保存失败、关闭视图恢复草稿、重试成功', async () => {
