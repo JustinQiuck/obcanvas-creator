@@ -10,7 +10,7 @@ const browser = await chromium.connectOverCDP('http://127.0.0.1:19347');
 try {
   for (const candidate of browser.contexts().flatMap(c => c.pages())) if (await candidate.evaluate(() => globalThis.app?.vault?.adapter?.getBasePath?.()).catch(() => '') === vault) { page = candidate; break; }
   assert.ok(page, '必须匹配隔离测试资料库'); page.setDefaultTimeout(12000);
-  await page.waitForFunction(() => app.workspace.layoutReady && !!app.plugins.plugins['obcanvas-creator']?.extractions);
+  await page.waitForFunction(() => app.workspace.layoutReady && !!app.plugins.plugins['obcanvas-creator']?.extractions && !app.plugins.plugins['obcanvas-creator'].skills.getSnapshot().loading);
   await page.evaluate(() => app.plugins.plugins['obcanvas-creator'].openView());
   const root = page.locator('.obcanvas-free').first(); await root.waitFor();
   const btn = name => root.getByRole('button', { name, exact: true });
@@ -150,7 +150,7 @@ try {
     });
     await check('全部依据失败时显示原因并禁用确认，问题清单在重新打开后仍可查看', async () => {
       mode = 'invalid'; const callCount = calls.length;
-      await btn('按当前剧本重新整理').click();
+      await btn('重新提取拍摄资产').click();
       await root.getByText('本次没有通过检查的资产，尚未创建任何卡片。', { exact: true }).waitFor(); await idle();
       assert.equal(await btn('确认并生成资产卡').isDisabled(), true);
       assert.equal(calls.length, callCount + 1);

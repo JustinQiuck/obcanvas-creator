@@ -171,3 +171,16 @@ test('全部条目失败保留问题清单，阻止空清单确认且不自动�
   assert.throws(() => parseTask(JSON.stringify({ ...task, issues: [null] })), /问题记录/);
   service.dispose();
 });
+
+test('选中 Skill 改变实际请求，并保存不可变规则及完整协议快照，旧任务仍可读取', async () => {
+  let message = '';
+  const { service, storage } = await setup(async req => { message = JSON.parse(req.body).messages[0].content; return transport(req); });
+  const chosen = { id: 'custom-mv', name: '演出资产', version: '2', stage: 'assets' as const, instructions: '只按原文整理演出空间。' };
+  const running = service.start('script', 'view', chosen); chosen.instructions = '运行中已修改'; await running;
+  const task = (await storage.list())[0]!;
+  assert.ok(message.includes('只按原文整理演出空间。')); assert.ok(!message.includes('运行中已修改'));
+  assert.equal(task.skill?.id, 'custom-mv'); assert.equal(task.skill?.prompt, message); assert.equal(task.skill?.instructions, '只按原文整理演出空间。');
+  const legacy = { ...task }; delete legacy.skill; assert.ok(parseTask(JSON.stringify(legacy)));
+  assert.throws(() => parseTask(JSON.stringify({ ...task, skill: { ...task.skill, stage: 'storyboard' } })), /Skill 记录无效/);
+  service.dispose();
+});

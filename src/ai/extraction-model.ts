@@ -1,3 +1,4 @@
+import { validAssetSkill, type AssetSkill } from './skill-model';
 import { isProductionAsset, productionKinds, type FilmRecord, type ProductionKind } from '../model';
 
 export type AssetItem = {
@@ -8,7 +9,7 @@ export type AssetItem = {
 export type ExtractionTask = {
   version: 1; id: string; revision: number; scriptId: string; sceneId: string;
   inputVersion: string; scriptText: string; createdAt: string; model: string;
-  skillVersion: string; status: 'review' | 'applying' | 'partial' | 'complete';
+  skillVersion: string; skill?: AssetSkill & { prompt: string }; status: 'review' | 'applying' | 'partial' | 'complete';
   items: AssetItem[]; issues?: string[];
 };
 const obj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -71,6 +72,7 @@ export function parseSuggestions(raw: string, script: FilmRecord, existing: Film
 export function parseTask(raw: string): ExtractionTask {
   const v: unknown = JSON.parse(raw);
   if (!obj(v) || v.version !== 1 || !taskIdValid(v.id) || !Number.isInteger(v.revision) || (v.revision as number) < 0 || !text(v.scriptId, 500) || !text(v.sceneId, 500) || !text(v.inputVersion, 64) || !text(v.scriptText, 40000) || !text(v.createdAt, 100) || !text(v.model, 250) || !text(v.skillVersion, 100) || !['review', 'applying', 'partial', 'complete'].includes(v.status as string) || !Array.isArray(v.items) || v.items.length > 100) throw new Error('资产整理草稿格式损坏，已保留原文件。');
+  if (v.skill !== undefined && (!validAssetSkill(v.skill) || !text((v.skill as Record<string, unknown>).prompt, 30000) || v.skill.version !== v.skillVersion)) throw new Error('清单的 Skill 记录无效，原文件已保留。');
   if (v.issues !== undefined && (!Array.isArray(v.issues) || v.issues.length > 100 || !v.issues.every(s => text(s, 1000)))) throw new Error('资产整理问题记录格式损坏，已保留原文件。');
   for (const item of v.items) {
     if (!obj(item) || !taskIdValid(item.id) || !(productionKinds as readonly unknown[]).includes(item.kind) || !text(item.title, 250) || !text(item.description, 6000, true) || !text(item.evidence, 3000) || !(v.scriptText as string).includes(item.evidence) || !list(item.unresolved) || !list(item.needs) || !item.needs.length || !['create', 'reuse', 'ignore'].includes(item.action as string) || !text(item.targetId, 500) || (item.action === 'create' && !taskIdValid(item.targetId)) || typeof item.applied !== 'boolean') throw new Error('资产整理条目格式损坏，已保留原文件。');

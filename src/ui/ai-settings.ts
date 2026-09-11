@@ -8,7 +8,7 @@ export class AISettingsTab extends PluginSettingTab {
   display() {
     const el = this.containerEl; el.empty();
     el.createEl('h2', { text: 'AI 助手' });
-    el.createEl('p', { text: '连接支持 Chat Completions 的文字模型。内置“拍摄资产提取”技能；图片和视频仍在外部生成。' });
+    el.createEl('p', { text: '连接支持 Chat Completions 的文字模型。资产整理 Skill 可在剧本卡选择、复制修改或导入；图片和视频仍在外部生成。' });
     const draft = { ...this.plugin.aiSettings }; let key: string | undefined;
     new Setting(el).setName('服务地址').setDesc('填写版本路径，如 https://服务域名/v1，也支持完整 /chat/completions 地址。').addText(t => t.setPlaceholder('https://服务域名/v1').setValue(draft.baseUrl).onChange(v => { draft.baseUrl = v; }));
     new Setting(el).setName('模型名称').setDesc('填写服务商提供的模型标识。').addText(t => t.setValue(draft.model).onChange(v => { draft.model = v; }));

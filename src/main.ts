@@ -7,7 +7,8 @@ import { VaultMedia, mediaKind } from './storage/vault-media';
 import { ChatClient, readAISettings, defaultAISettings, type AISettings } from './ai/chat-client';
 import { VaultExtractions, EXTRACTIONS_ROOT } from './storage/vault-extractions';
 import { ExtractionService } from './ai/extraction-service';
-import { assetSkill } from './ai/skills';
+import { assetSkill, builtinAssetSkills } from './ai/skills';
+import { VaultSkills, SKILLS_PATH } from './storage/vault-skills';
 import { AISettingsTab } from './ui/ai-settings';
 
 export default class ObCanvasPlugin extends Plugin {
@@ -19,6 +20,7 @@ export default class ObCanvasPlugin extends Plugin {
   private sessionSecret = '';
   chat = new ChatClient(async request => { const r = await requestUrl({ ...request, throw: false }); return { status: r.status, text: r.text }; });
   extractions!: ExtractionService;
+  skills!: VaultSkills;
   private ready = false;
   private drafts = new Map<string, Recovery>();
   private activeSessions = new Set<string>();
@@ -35,6 +37,7 @@ export default class ObCanvasPlugin extends Plugin {
         this.drafts.set(entry.id, entry.recovery);
       }
     }
+    this.skills = new VaultSkills(this.app.vault, builtinAssetSkills);
     this.records = new VaultRecords(this.app.vault);
     this.layout = new VaultLayout(this.app.vault);
     this.media = new VaultMedia(this.app, this.records);
@@ -46,6 +49,7 @@ export default class ObCanvasPlugin extends Plugin {
     this.addCommand({ id: 'open-film-view', name: '打开影视画布', callback: () => { void this.openView(); } });
     this.addCommand({ id: 'open-another-film-view', name: '在新标签页打开影视画布', callback: () => { void this.openView(true); } });
     const changed = (file: TAbstractFile) => {
+      if (file.path === SKILLS_PATH || file.path === PROJECT_ROOT) void this.skills.refresh();
       if (file.path.startsWith(EXTRACTIONS_ROOT + '/')) { void this.extractions.refresh(); return; }
       if (file.path === LAYOUT_PATH) void this.layout.refresh();
       else if (file.path === PROJECT_ROOT || file.path.startsWith(PROJECT_ROOT + '/')) void this.records.refresh();
@@ -56,10 +60,11 @@ export default class ObCanvasPlugin extends Plugin {
     this.registerEvent(this.app.vault.on('delete', changed));
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
       if ([file.path, oldPath].some(p => p === PROJECT_ROOT || p.startsWith(PROJECT_ROOT + '/'))) void this.records.refresh();
+      if ([file.path, oldPath].some(p => p === SKILLS_PATH || p === PROJECT_ROOT)) void this.skills.refresh();
       if (file.path === LAYOUT_PATH || oldPath === LAYOUT_PATH) void this.layout.refresh();
       void this.media.renamed(file.path, oldPath).catch(e => new Notice(`素材位置更新失败：${errorMessage(e)}。请在镜头中重新关联。`));
     }));
-    this.app.workspace.onLayoutReady(() => { void this.records.refresh(); void this.layout.refresh(); void this.extractions.refresh(); });
+    this.app.workspace.onLayoutReady(() => { void this.records.refresh(); void this.layout.refresh(); void this.extractions.refresh(); void this.skills.refresh(); });
   }
   async openView(newTab = false) {
     let leaf = newTab ? undefined : this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
@@ -109,6 +114,7 @@ export default class ObCanvasPlugin extends Plugin {
     void this.extractions.flushDrafts().catch(() => {}).finally(() => this.extractions.dispose());
     this.app.workspace.detachLeavesOfType(VIEW_TYPE);
     this.records.dispose();
+    this.skills.dispose();
     void this.layout.flush().catch(e => new Notice(errorMessage(e))).finally(() => this.layout.dispose());
     this.media.dispose();
     void this.flushDrafts().catch(() => {});

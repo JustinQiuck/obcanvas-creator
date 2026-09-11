@@ -2,6 +2,7 @@ import { isProductionAsset, type FilmRecord } from '../model';
 import { VaultRecords, errorMessage } from '../storage/vault-records';
 import { VaultExtractions } from '../storage/vault-extractions';
 import { extractionContext, inputVersion, parseSuggestions, parseTask, type ExtractionTask } from './extraction-model';
+import { skillPrompt, type AssetSkill } from './skill-model';
 import { ChatClient, type AISettings } from './chat-client';
 
 export class ExtractionService {
@@ -54,7 +55,9 @@ export class ExtractionService {
     catch (e) { this.emit({ message: errorMessage(e) }); throw e; }
     finally { this.emit({ busy: false }); }
   }
-  async start(scriptId: string, owner: string) {
+  async start(scriptId: string, owner: string, selectedSkill?: AssetSkill) {
+    const skill = selectedSkill ? structuredClone(selectedSkill) : this.skill;
+    const prompt = selectedSkill ? skillPrompt(selectedSkill) : skill.instructions;
     return this.guard(scriptId, async () => {
       this.owner = owner; this.controller = new AbortController();
       try {
@@ -64,11 +67,11 @@ export class ExtractionService {
         if (catalog.problems.length) throw new Error('请先修复项目中无法读取或重复的资产记录。');
         const context = extractionContext(script, catalog.records), version = await inputVersion(script), settings = { ...this.settings() };
         this.emit({ message: '正在整理拍摄资产，等待模型返回… 最长约 2 分钟，可取消。' });
-        const raw = await this.chat.complete(settings, this.secret(), [{ role: 'system', content: this.skill.instructions }, { role: 'user', content: context }], this.controller.signal);
+        const raw = await this.chat.complete(settings, this.secret(), [{ role: 'system', content: prompt }, { role: 'user', content: context }], this.controller.signal);
         if (this.controller.signal.aborted) throw new Error('已取消整理。');
         this.emit({ message: '模型已返回，正在核对剧本依据并保存清单…' });
         const { items, issues } = parseSuggestions(raw, script, catalog.records);
-        const task: ExtractionTask = { version: 1, id: crypto.randomUUID(), revision: 0, scriptId, sceneId: script.sceneId!, inputVersion: version, scriptText: script.body, createdAt: new Date().toISOString(), model: settings.model, skillVersion: this.skill.version, status: 'review', items, issues };
+        const task: ExtractionTask = { version: 1, id: crypto.randomUUID(), revision: 0, scriptId, sceneId: script.sceneId!, inputVersion: version, scriptText: script.body, createdAt: new Date().toISOString(), model: settings.model, skillVersion: skill.version, ...(selectedSkill ? { skill: { ...skill as AssetSkill, prompt } } : {}), status: 'review', items, issues };
         this.keep(await this.storage.save(task));
         const changed = await inputVersion(await this.records.requireRecord(scriptId)) !== version;
         this.emit({ message: changed ? '剧本已更新，清单已保留供对照；请按最新剧本重新整理。' : issues.length ? `已保留 ${items.length} 项可确认资产，另有 ${issues.length} 项未通过检查。请查看下方原因。` : '资产清单已保存，请检查后确认。' });

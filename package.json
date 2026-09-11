@@ -1,6 +1,6 @@
 {
   "name": "obcanvas-creator",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -22,7 +22,9 @@
     "test:assets-ai": "node scripts/test-assets-ai.mjs",
     "test:assets-ai:reopen": "node scripts/test-assets-ai.mjs --reopen",
     "test:deletion": "node scripts/test-deletion.mjs",
-    "test:deletion:reopen": "node scripts/test-deletion.mjs --reopen"
+    "test:deletion:reopen": "node scripts/test-deletion.mjs --reopen",
+    "test:skills": "node scripts/test-skills.mjs",
+    "test:skills:reopen": "node scripts/test-skills.mjs --reopen"
   },
   "dependencies": {
     "react": "19.3.0",

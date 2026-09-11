@@ -120,3 +120,14 @@
 .obcanvas-delete-dialog [role="alert"] { color: var(--text-error); }
 .obcanvas-delete-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
 .obcanvas-card-heading > span { display: flex; gap: 8px; }
+
+.obcanvas-skill-dialog { width: min(700px, calc(100vw - 40px)); max-height: calc(100vh - 60px); overflow: auto; border: 1px solid var(--background-modifier-border); border-radius: 12px; padding: 24px; background: var(--background-primary); color: var(--text-normal); }
+.obcanvas-skill-dialog::backdrop { background: #0006; }
+.obcanvas-skill-dialog label { display: flex; flex-direction: column; gap: 6px; margin: 14px 0; }
+.obcanvas-skill-dialog textarea { min-height: 240px; resize: vertical; }
+.obcanvas-skill-dialog p { font-size: 13px; line-height: 1.7; }
+.obcanvas-skill-dialog [role="alert"] { color: var(--text-error); }
+.obcanvas-skill-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 14px; }
+.obcanvas-skill-actions label { margin: 0; max-width: 220px; font-size: 12px; }
+.obcanvas-skill-picker { margin-bottom: 14px; }
+.obcanvas-skill-snapshot { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; font-size: 12px; }

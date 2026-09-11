@@ -1,3 +1,4 @@
+import type { VaultSkills } from '../storage/vault-skills';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { EditorSession } from '../editor-session';
 import { VaultRecords, errorMessage } from '../storage/vault-records';
@@ -16,7 +17,7 @@ import { Viewports } from '../canvas/viewports';
 import { orderedShots, shotStatus, kindLabels, linkRoles, draftOf, isVideoPath, type RecordKind, type CardLink } from '../model';
 import { isProductionAsset, assetStatus } from '../model';
 
-export function Workbench({ records, editor, layout, viewports, media, openNote, extractions, owner }: { records: VaultRecords; editor: EditorSession; layout: VaultLayout; viewports: Viewports; media: VaultMedia; openNote: (path: string) => Promise<void>; extractions: ExtractionService; owner: string }) {
+export function Workbench({ skills, records, editor, layout, viewports, media, openNote, extractions, owner }: { skills: VaultSkills; records: VaultRecords; editor: EditorSession; layout: VaultLayout; viewports: Viewports; media: VaultMedia; openNote: (path: string) => Promise<void>; extractions: ExtractionService; owner: string }) {
   const extractionState = useSyncExternalStore(extractions.subscribe, extractions.getSnapshot);
   const catalog = useSyncExternalStore(records.subscribe, records.getSnapshot);
   const state = useSyncExternalStore(editor.subscribe, editor.getSnapshot);
@@ -163,7 +164,7 @@ export function Workbench({ records, editor, layout, viewports, media, openNote,
     {deleting && <DeleteCardDialog node={deleting} records={catalog.records} busy={busy} error={error} cancel={() => { if (!busy) { setDeleting(null); setError(''); } }} confirm={confirmDelete} />}
     <header className="obcanvas-free-header"><strong>影视画布</strong><select aria-label="当前场次" value={activeScene} disabled={busy} onChange={e => { const id = e.target.value; void run(() => { setSceneId(id); editor.clearSelection(); setSelectedKey(''); setPanel(''); setSourceId(''); }); }}>
       {!scenes.length && <option value="">从剧本或素材开始</option>}{scenes.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
-    </select><button disabled={busy} onClick={() => void create('scene')}>新建场次</button><button disabled={busy || !scene} onClick={() => void run(() => { editor.select(scene!.id); setSelectedKey(`r:${scene!.id}`); setPanel('detail'); })}>场次名称</button><span className="obcanvas-hint">本地资料库 · 0.4.2</span></header>
+    </select><button disabled={busy} onClick={() => void create('scene')}>新建场次</button><button disabled={busy || !scene} onClick={() => void run(() => { editor.select(scene!.id); setSelectedKey(`r:${scene!.id}`); setPanel('detail'); })}>场次名称</button><span className="obcanvas-hint">本地资料库 · 0.5.0</span></header>
     <nav className="obcanvas-free-tools" aria-label="添加到画布">
       {(['script', 'person', 'setting', 'prop', 'shot', 'frame'] as const).map(kind => <button key={kind} disabled={busy || catalog.loading} onClick={() => void create(kind)}>＋ {kindLabels[kind]}</button>)}
       <button disabled={busy} onClick={() => input.current?.click()}>＋ 图片 / 视频</button><button disabled={busy} onClick={pickAsset}>关联库内素材</button>
@@ -185,7 +186,7 @@ export function Workbench({ records, editor, layout, viewports, media, openNote,
         <div className="obcanvas-card-heading"><h2>{panel === 'detail' ? selected?.label ?? '场次' : panel === 'tasks' ? '下一步做什么' : '镜头顺序'}</h2><span>{panel === 'detail' && selected && <button disabled={busy || state.saving || extractionState.busy} onClick={() => requestDelete()}>{selected.record ? '删除卡片' : '移除素材卡'}</button>}<button aria-label="关闭详情" onClick={() => void run(() => setPanel(''))}>×</button></span></div>
         {panel === 'detail' && <>
           {selected?.record?.kind === 'script' && <>
-            <ExtractionPanel script={selected.record} records={catalog.records} service={extractions} start={() => void run(() => { const id = selected.record!.id; void extractions.start(id, owner).catch(() => {}); })} apply={() => void run(async () => { const task = extractions.getSnapshot().tasks.find(t => t.scriptId === selected.record!.id); if (task) await extractions.apply(task); })} openAsset={id => { const node = graph.nodes.find(n => n.record?.id === id); if (node) select(node, true); else setError('资产已移除或无法读取，请检查项目记录。'); }} />
+            <ExtractionPanel skills={skills} script={selected.record} records={catalog.records} service={extractions} start={() => void run(() => { const id = selected.record!.id; void extractions.start(id, owner, skills.resolve(id)).catch(() => {}); })} apply={() => void run(async () => { const task = extractions.getSnapshot().tasks.find(t => t.scriptId === selected.record!.id); if (task) await extractions.apply(task); })} openAsset={id => { const node = graph.nodes.find(n => n.record?.id === id); if (node) select(node, true); else setError('资产已移除或无法读取，请检查项目记录。'); }} />
             <details><summary>关联已有拍摄资产（可跨场次复用）</summary><select aria-label="已有拍摄资产" value={reuseId} onChange={e => setReuseId(e.target.value)}><option value="">选择人物、场景或道具…</option>{catalog.records.filter(isProductionAsset).map(r => <option key={r.id} value={r.id}>{kindLabels[r.kind]} · {r.title}</option>)}</select><button disabled={busy || !reuseId} onClick={() => void run(async () => { await records.attachScriptAsset(await records.requireRecord(selected.record!.id), reuseId); setReuseId(''); })}>关联到剧本</button></details>
           </>}
           {selected?.record && isProductionAsset(selected.record) && <AssetPreparation key={selected.record.id} record={selected.record} records={records} media={media} />}

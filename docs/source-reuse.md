@@ -20,3 +20,5 @@
 ## 0.4.0 AI 助手与资产准备
 
 本次在本仓库独立编写模型适配器、任务执行与确认流程、资产引用和内置 `production-asset-extractor` Skill。仅借鉴按任务加载 Skill 与受控项目读写的结构，没有复制 huobao-drama 的 Skill 正文、Agent 框架或业务实现，也没有新增对原画布目录的运行依赖。既有画布来源与 MIT 署名继续保留。
+
+0.5.0 的 `mv-asset-extractor` 及可选 Skill 的配置、导入导出与执行逻辑均在本仓库独立编写。未复制外部 MV／导演 Skill，不导入全局技能目录；保留既有画布 MIT 署名。
