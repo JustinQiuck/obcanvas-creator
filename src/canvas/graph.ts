@@ -1,10 +1,12 @@
-import { kindLabels, isVideoPath, type FilmRecord, type MediaRef, type CardLink } from '../model';
+import { kindLabels, isVideoPath, isProductionAsset, type FilmRecord, type MediaRef, type CardLink } from '../model';
 
 export type BoardNode = { id: string; positionId: string; title: string; label: string; body: string; record?: FilmRecord; reference?: MediaRef };
 export type BoardEdge = { id: string; from: string; to: string; label: string; target: FilmRecord; link?: CardLink; media?: MediaRef };
 // Media decisions belong to the target record. Nodes never copy adoption state.
 export function buildGraph(records: FilmRecord[], sceneId: string) {
   const cards = records.filter(r => r.sceneId === sceneId && r.kind !== 'scene');
+  const referenced = new Set(cards.flatMap(r => (r.links ?? []).filter(l => l.from.startsWith('r:')).map(l => l.from.slice(2))));
+  cards.push(...records.filter(r => r.sceneId !== sceneId && isProductionAsset(r) && referenced.has(r.id)));
   const nodes: BoardNode[] = cards.map(r => ({ id: `r:${r.id}`, positionId: r.id, title: r.title, label: kindLabels[r.kind], body: r.body, record: r, reference: r.kind !== 'shot' ? r.media?.[0] : undefined }));
   const owners = new Map<string, string>();
   nodes.forEach(n => { if (n.reference && !owners.has(n.reference.id)) owners.set(n.reference.id, n.id); });

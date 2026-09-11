@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { shotStatus } from '../model';
+import { shotStatus, assetStatus, isProductionAsset } from '../model';
 import type { BoardNode } from './graph';
 import type { Position } from './types';
 import type { VaultMedia } from '../storage/vault-media';
@@ -20,7 +20,7 @@ export function BoardCard({ node, media, position, scale, selected, onSelect, on
     {source?.kind === 'video' && <span className="obcanvas-node-video">▷ <small>视频素材 · 点击播放</small></span>}
     {(source?.error || failed) && <span className="obcanvas-missing">素材缺失或无法读取</span>}
     <span className="obcanvas-node-body">{node.body || (node.record?.kind === 'script' ? '点击粘贴剧本，从故事开始整理。' : '点击编辑，连接到需要它的镜头。')}</span>
-    <span className="obcanvas-node-state">{node.record?.kind === 'shot' ? shotStatus(node.record) : '点击编辑 · 拖动整理'}</span>
+    <span className="obcanvas-node-state">{node.record?.kind === 'shot' ? shotStatus(node.record) : node.record && isProductionAsset(node.record) ? assetStatus(node.record, r => media.referenceReady(r)) : '点击编辑 · 拖动整理'}</span>
     <button className="obcanvas-port" aria-label={`从${node.title}连接`} title="连接到另一张卡" onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onConnect(); }}>＋</button>
   </div>;
 }

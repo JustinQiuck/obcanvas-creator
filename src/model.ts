@@ -1,11 +1,24 @@
 import { isMap, isSeq, parseDocument, stringify } from 'yaml';
 
-export const recordKinds = ['scene', 'shot', 'script', 'person', 'setting', 'frame', 'asset'] as const;
+export const recordKinds = ['scene', 'shot', 'script', 'person', 'setting', 'prop', 'frame', 'asset'] as const;
 export type RecordKind = typeof recordKinds[number];
-export const kindLabels: Record<RecordKind, string> = { scene: '场次', shot: '镜头', script: '剧本', person: '人物', setting: '场景', frame: '关键帧', asset: '素材' };
-export const linkRoles = ['参考', '剧情拆分', '人物参考', '场景参考', '起始帧'] as const;
+export const kindLabels: Record<RecordKind, string> = { scene: '场次', shot: '镜头', script: '剧本', person: '人物', setting: '场景', prop: '道具', frame: '关键帧', asset: '素材' };
+export const linkRoles = ['参考', '剧情拆分', '人物参考', '场景参考', '道具参考', '拍摄资产', '起始帧'] as const;
 export type CardLink = { id: string; from: string; role: typeof linkRoles[number] };
-export type MediaRef = { id: string; path: string; decision?: 'candidate' | 'adopted' | 'rejected'; reason?: string };
+export type MediaRef = { id: string; path: string; decision?: 'candidate' | 'adopted' | 'rejected'; reason?: string; purpose?: string; confirmed?: boolean; fingerprint?: string };
+export const productionKinds = ['person', 'setting', 'prop'] as const;
+export type ProductionKind = typeof productionKinds[number];
+export function isProductionAsset(record: FilmRecord) { return (productionKinds as readonly string[]).includes(record.kind); }
+export function isImagePath(path: string) { return /\.(png|jpe?g|webp|gif|avif)$/i.test(path); }
+export type AssetDetails = { unresolved: string[]; needs: string[] };
+export function assetDetails(record: FilmRecord): AssetDetails { return record.assetDetails ?? { unresolved: [], needs: ['主参考'] }; }
+export function assetStatus(record: FilmRecord, available: (m: MediaRef) => boolean = () => true) {
+  const { unresolved, needs } = assetDetails(record), images = (record.media ?? []).filter(m => isImagePath(m.path));
+  if (unresolved.length) return '待确认信息';
+  if (images.some(m => !available(m))) return '参考图需复核';
+  if (needs.every(p => images.some(m => m.purpose === p && m.confirmed && available(m)))) return '已绑定参考图';
+  return images.length ? '待检查参考图' : '待准备参考图';
+}
 export const planningFields = ['intent', 'framing', 'camera', 'prompt', 'source'] as const;
 export const draftFields = ['title', 'body', ...planningFields] as const;
 export type Planning = Partial<Record<typeof planningFields[number], string>>;
@@ -25,7 +38,7 @@ export function orderedShots(scene: FilmRecord | undefined, records: FilmRecord[
 export function validMediaPath(path: string) { return !!path && !/^(?:[a-z]+:|\/)/i.test(path) && !path.includes('\\') && !path.split('/').some(p => !p || p === '.' || p === '..') && !/[\x00-\x1f]/.test(path); }
 export type FilmRecord = Planning & {
   id: string; kind: RecordKind; version: 1; title: string; body: string;
-  sceneId?: string; path: string; media?: MediaRef[]; shotOrder?: string[]; links?: CardLink[];
+  sceneId?: string; path: string; media?: MediaRef[]; shotOrder?: string[]; links?: CardLink[]; assetDetails?: AssetDetails;
 };
 export type Draft = Pick<FilmRecord, 'title' | 'body'> & Planning;
 export function draftOf(record: FilmRecord): Draft { return Object.fromEntries(draftFields.map(f => [f, record[f] ?? ''])) as Draft; }
@@ -55,11 +68,13 @@ export function parseRecord(source: string, path: string): FilmRecord | null {
   if (meta.links !== undefined && (!Array.isArray(meta.links) || !meta.links.every(l => object(l) && typeof l.id === 'string' && !!l.id && typeof l.from === 'string' && /^[rm]:.+/.test(l.from) && linkRoles.includes(l.role as CardLink['role'])) || new Set(meta.links.map(l => l.id)).size !== meta.links.length)) throw new RecordError('卡片关系格式无效，请保留原笔记。');
   for (const m of (meta.media ?? []) as MediaRef[]) {
     if ((m.decision !== undefined && !['candidate', 'adopted', 'rejected'].includes(m.decision)) || (m.reason !== undefined && typeof m.reason !== 'string') || (m.decision && m.decision !== 'candidate' && !isVideoPath(m.path)) || (m.decision === 'rejected' && !m.reason?.trim())) throw new RecordError('素材选片记录无效，请保留并检查笔记。');
+    if ((m.purpose !== undefined && (typeof m.purpose !== 'string' || !m.purpose.trim())) || (m.confirmed !== undefined && typeof m.confirmed !== 'boolean') || (m.fingerprint !== undefined && typeof m.fingerprint !== 'string') || (m.confirmed && (!isImagePath(m.path) || !m.purpose || !m.fingerprint))) throw new RecordError('参考图用途或确认记录无效。');
   }
+  if (meta.assetDetails !== undefined && (!(productionKinds as readonly unknown[]).includes(meta.kind) || !object(meta.assetDetails) || ![meta.assetDetails.unresolved, meta.assetDetails.needs].every(list => Array.isArray(list) && list.length <= 50 && list.every(s => typeof s === 'string' && !!s.trim() && s.length <= 1000)) || !(meta.assetDetails.needs as unknown[]).length)) throw new RecordError('资产需求格式无效，请保留原笔记。');
   if (((meta.media ?? []) as MediaRef[]).filter(m => m.decision === 'adopted').length > 1) throw new RecordError('一个镜头只能采用一份视频，请检查笔记。');
   if (meta.shotOrder !== undefined && (!Array.isArray(meta.shotOrder) || !meta.shotOrder.every(id => typeof id === 'string' && !!id) || new Set(meta.shotOrder).size !== meta.shotOrder.length)) throw new RecordError('镜头顺序格式无效，请检查场次笔记。');
   for (const field of planningFields) if (meta[field] !== undefined && typeof meta[field] !== 'string') throw new RecordError('镜头规划字段必须是文字。');
-  return { id: meta.id, kind: meta.kind as RecordKind, version: 1, title: meta.title, body: note.body, path, ...Object.fromEntries(planningFields.filter(f => meta[f] !== undefined).map(f => [f, meta[f]])), ...(meta.shotOrder ? { shotOrder: meta.shotOrder as string[] } : {}), ...(meta.media ? { media: meta.media as MediaRef[] } : {}), ...(meta.kind !== 'scene' ? { sceneId: meta.sceneId as string } : {}), ...(meta.links ? { links: meta.links as CardLink[] } : {}) };
+  return { id: meta.id, kind: meta.kind as RecordKind, version: 1, title: meta.title, body: note.body, path, ...Object.fromEntries(planningFields.filter(f => meta[f] !== undefined).map(f => [f, meta[f]])), ...(meta.shotOrder ? { shotOrder: meta.shotOrder as string[] } : {}), ...(meta.media ? { media: meta.media as MediaRef[] } : {}), ...(meta.kind !== 'scene' ? { sceneId: meta.sceneId as string } : {}), ...(meta.links ? { links: meta.links as CardLink[] } : {}), ...(meta.assetDetails ? { assetDetails: meta.assetDetails as AssetDetails } : {}) };
 }
 export function patchMedia(source: string, shotId: string, edit: (items: MediaRef[]) => MediaRef[]) {
   const latest = parseRecord(source, '');
@@ -75,7 +90,7 @@ export function patchMedia(source: string, shotId: string, edit: (items: MediaRe
     const node = nodes.get(m.id);
     if (isMap(node)) {
       node.set('path', m.path);
-      for (const field of ['decision', 'reason'] as const) {
+      for (const field of ['decision', 'reason', 'purpose', 'confirmed', 'fingerprint'] as const) {
         if (m[field] !== undefined) node.set(field, m[field]); else node.delete(field);
       }
       sequence.items[i] = node;
@@ -139,6 +154,16 @@ export function patchLinks(source: string, recordId: string, edit: (links: CardL
   if (!record || record.id !== recordId) throw new ConflictError('卡片身份已变化，请重新载入。');
   const note = splitNote(source)!;
   note.document.setIn(['obcanvas', 'links'], edit(record.links ?? []));
+  const result = `${note.bom}---${note.eol}${note.document.toString().replace(/\n/g, note.eol)}---${note.eol}${note.body}`;
+  parseRecord(result, ''); return result;
+}
+
+export function patchAssetDetails(source: string, base: FilmRecord, details: AssetDetails) {
+  const latest = parseRecord(source, '')!;
+  if (!latest || latest.id !== base.id || !isProductionAsset(latest)) throw new ConflictError('资产身份已变化。');
+  if (JSON.stringify(assetDetails(latest)) !== JSON.stringify(assetDetails(base))) throw new ConflictError('资产需求已被其他窗口修改，请载入最新内容。');
+  const note = splitNote(source)!;
+  for (const key of ['unresolved', 'needs'] as const) note.document.setIn(['obcanvas', 'assetDetails', key], details[key]);
   const result = `${note.bom}---${note.eol}${note.document.toString().replace(/\n/g, note.eol)}---${note.eol}${note.body}`;
   parseRecord(result, ''); return result;
 }

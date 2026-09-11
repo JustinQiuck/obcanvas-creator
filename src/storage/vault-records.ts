@@ -1,5 +1,7 @@
 import type { Vault, TFile } from 'obsidian';
 import { FilmRecord, Draft, RecordError, ConflictError, newRecord, parseRecord, patchRecord, patchMedia, patchOrder, orderedShots, decideMedia, type MediaRef, type RecordKind, type CardLink, kindLabels, patchLinks } from '../model';
+import { isProductionAsset, patchAssetDetails, type AssetDetails } from '../model';
+import type { AssetItem } from '../ai/extraction-model';
 
 export const PROJECT_ROOT = '影视项目';
 export type Catalog = { records: FilmRecord[]; problems: string[]; loading: boolean };
@@ -80,7 +82,56 @@ export class VaultRecords {
     const { entries } = await this.scan();
     const entry = entries.find(e => e.record.id === recordId);
     if (!entry) throw new RecordError('卡片无法读取，未修改关系。');
-    await this.vault.process(entry.file, raw => patchLinks(raw, recordId, edit));
+    await this.vault.process(entry.file, raw => patchLinks(raw, recordId, links => {
+      const next = edit(links);
+      for (const l of next.filter(l => l.role === '拍摄资产' && !links.some(old => old.id === l.id && old.from === l.from && old.role === l.role))) {
+        if (entry.record.kind !== 'script' || !entries.some(e => `r:${e.record.id}` === l.from && isProductionAsset(e.record))) throw new RecordError('拍摄资产必须关联已有的人物、场景或道具与剧本。');
+      }
+      return next;
+    }));
+    await this.refresh();
+  }
+  async updateAssetDetails(base: FilmRecord, details: AssetDetails) {
+    const { entries } = await this.scan();
+    const entry = entries.find(e => e.record.id === base.id);
+    if (!entry) throw new RecordError('资产无法读取。');
+    await this.vault.process(entry.file, raw => patchAssetDetails(raw, base, details));
+    await this.refresh();
+  }
+  async requireRecord(id: string) {
+    const { entries } = await this.scan();
+    const entry = entries.find(e => e.record.id === id);
+    if (!entry) throw new RecordError('记录已删除、编号重复或无法读取。');
+    return entry.record;
+  }
+  async ensureExtractedAsset(item: AssetItem, sceneId: string, taskId: string) {
+    const { entries, problems } = await this.scan();
+    if (problems.length) throw new RecordError('项目中存在损坏或重复记录，请先处理后再创建资产。');
+    const origin = `资产整理任务：${taskId}/${item.id}`;
+    const existing = entries.find(e => e.record.id === item.targetId)?.record;
+    if (existing) {
+      if (existing.source !== origin || existing.kind !== item.kind || existing.sceneId !== sceneId) throw new ConflictError('预分配的资产编号已被其他记录使用。');
+      return existing;
+    }
+    if (!entries.some(e => e.record.id === sceneId && e.record.kind === 'scene')) throw new RecordError('所属场次已移除。');
+    const path = `${PROJECT_ROOT}/资产-${item.targetId}.md`;
+    let raw = newRecord(item.kind, item.targetId, item.title, sceneId);
+    let base = parseRecord(raw, path)!;
+    raw = patchRecord(raw, base, { title: item.title, body: item.description, source: origin });
+    base = parseRecord(raw, path)!;
+    raw = patchAssetDetails(raw, base, { unresolved: item.unresolved, needs: item.needs });
+    await this.vault.create(path, raw); await this.refresh();
+    return parseRecord(raw, path)!;
+  }
+  async attachScriptAsset(base: FilmRecord, assetId: string) {
+    const { entries } = await this.scan();
+    const entry = entries.find(e => e.record.id === base.id && e.record.kind === 'script');
+    if (!entry || !entries.some(e => e.record.id === assetId && isProductionAsset(e.record))) throw new RecordError('剧本或资产已移除，未增加关系。');
+    await this.vault.process(entry.file, raw => {
+      const latest = parseRecord(raw, '')!;
+      if (latest.body !== base.body || latest.title !== base.title || latest.sceneId !== base.sceneId) throw new ConflictError('剧本已更新，请重新核对清单。');
+      return patchLinks(raw, base.id, links => links.some(l => l.role === '拍摄资产' && l.from === `r:${assetId}`) ? links : [...links, { id: crypto.randomUUID(), from: `r:${assetId}`, role: '拍摄资产' }]);
+    });
     await this.refresh();
   }
   private async appendOrder(sceneId: string, id: string) {

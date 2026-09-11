@@ -1,6 +1,6 @@
 import { FuzzySuggestModal, Notice, type App, type TFile } from 'obsidian';
 import type { MediaRef, FilmRecord } from '../model';
-import { validMediaPath } from '../model';
+import { validMediaPath, isImagePath } from '../model';
 import { errorMessage, VaultRecords, PROJECT_ROOT } from './vault-records';
 export function mediaKind(path: string): 'image' | 'video' | null {
   const ext = path.split('.').pop()?.toLowerCase();
@@ -26,6 +26,17 @@ export class VaultMedia {
   previewKey(ref: MediaRef) {
     const file = validMediaPath(ref.path) ? this.app.vault.getFileByPath(ref.path) : null;
     return `${ref.path}:${file ? `${file.stat.mtime}:${file.stat.size}` : 'missing'}`;
+  }
+  referenceReady(ref: MediaRef) { return !this.locate(ref).error && (!ref.confirmed || ref.fingerprint === this.previewKey(ref)); }
+  bindReference(base: FilmRecord, ref: MediaRef, purpose: string, confirmed: boolean) {
+    return this.enqueue(async () => {
+      if (!isImagePath(ref.path) || this.locate(ref).error) throw new Error('请先关联可读取的参考图片。');
+      await this.records.editMedia(base.id, items => {
+        const current = items.find(m => m.id === ref.id);
+        if (!current || JSON.stringify(current) !== JSON.stringify(ref)) throw new Error('参考图记录已更新，请检查最新关联。');
+        return items.map(m => m.id === ref.id ? { ...m, purpose, confirmed, fingerprint: confirmed ? this.previewKey(m) : undefined } : m);
+      });
+    });
   }
   private enqueue(run: () => Promise<void>) { const next = this.queue.catch(() => {}).then(run); this.queue = next; return next; }
   locate(ref: MediaRef) {
@@ -84,7 +95,7 @@ export class VaultMedia {
           const current = items.find(m => m.id === ref.id);
           if (current && current.path !== ref.path && current.path !== path) throw new Error('素材关联已被修改，请载入最新记录后重试。');
           if (canonical && canonical.id !== ref.id && items.some(m => m.id === canonical.id)) throw new Error('该镜头已关联目标素材，请移除旧关联，避免合并时丢失选片记录。');
-          const updated = items.map(m => m.id === ref.id ? { ...m, id: canonical?.id ?? m.id, path, ...(path !== m.path ? { decision: undefined, reason: undefined } : {}) } : m);
+          const updated = items.map(m => m.id === ref.id ? { ...m, id: canonical?.id ?? m.id, path, ...(path !== m.path ? { decision: undefined, reason: undefined, confirmed: false, fingerprint: undefined } : {}) } : m);
           return updated.filter((m, i) => updated.findIndex(other => other.id === m.id) === i);
         });
       }
@@ -95,7 +106,13 @@ export class VaultMedia {
     return this.enqueue(async () => {
       await this.records.refresh();
       for (const record of this.records.getSnapshot().records.filter(r => r.media?.some(m => m.path === oldPath || m.path.startsWith(oldPath + '/')))) {
-        await this.records.editMedia(record.id, items => items.map(m => m.path === oldPath || m.path.startsWith(oldPath + '/') ? { ...m, path: path + m.path.slice(oldPath.length) } : m));
+        await this.records.editMedia(record.id, items => items.map(m => {
+          if (m.path !== oldPath && !m.path.startsWith(oldPath + '/')) return m;
+          const renamed = { ...m, path: path + m.path.slice(oldPath.length) };
+          // Preserve confirmation only for the same file contents after a rename.
+          const oldStamp = m.fingerprint?.slice(m.path.length), stamp = this.previewKey(renamed).slice(renamed.path.length);
+          return { ...renamed, ...(m.confirmed ? oldStamp === stamp ? { fingerprint: this.previewKey(renamed) } : { confirmed: false, fingerprint: undefined } : {}) };
+        }));
       }
       this.changed();
     });

@@ -8,10 +8,14 @@ import { BoardCard } from '../canvas/board-card';
 import { buildGraph, type BoardNode, type BoardEdge } from '../canvas/graph';
 import { Preview } from './media-panel';
 import { RecordInspector } from './record-inspector';
+import { ExtractionPanel } from './extraction-panel';
+import { AssetPreparation } from './asset-preparation';
+import type { ExtractionService } from '../ai/extraction-service';
 import { Viewports } from '../canvas/viewports';
 import { orderedShots, shotStatus, kindLabels, linkRoles, draftOf, isVideoPath, type RecordKind, type CardLink } from '../model';
+import { isProductionAsset, assetStatus } from '../model';
 
-export function Workbench({ records, editor, layout, viewports, media, openNote }: { records: VaultRecords; editor: EditorSession; layout: VaultLayout; viewports: Viewports; media: VaultMedia; openNote: (path: string) => Promise<void> }) {
+export function Workbench({ records, editor, layout, viewports, media, openNote, extractions, owner }: { records: VaultRecords; editor: EditorSession; layout: VaultLayout; viewports: Viewports; media: VaultMedia; openNote: (path: string) => Promise<void>; extractions: ExtractionService; owner: string }) {
   const catalog = useSyncExternalStore(records.subscribe, records.getSnapshot);
   const state = useSyncExternalStore(editor.subscribe, editor.getSnapshot);
   const layoutState = useSyncExternalStore(layout.subscribe, layout.getSnapshot);
@@ -22,6 +26,7 @@ export function Workbench({ records, editor, layout, viewports, media, openNote 
   const [panel, setPanel] = useState<'detail' | 'tasks' | 'order' | ''>(state.dirty ? 'detail' : '');
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [sourceId, setSourceId] = useState(''), [role, setRole] = useState('参考');
+  const [reuseId, setReuseId] = useState('');
   const lock = useRef(false), input = useRef<HTMLInputElement>(null), board = useRef<HTMLDivElement>(null);
   const scenes = catalog.records.filter(r => r.kind === 'scene');
   const activeScene = sceneId || state.base?.sceneId || scenes[0]?.id || '';
@@ -46,6 +51,7 @@ export function Workbench({ records, editor, layout, viewports, media, openNote 
     lock.current = true; setBusy(true); setError('');
     try {
       if (save && editor.getSnapshot().dirty) { await editor.save(); if (editor.getSnapshot().dirty) { setPanel('detail'); throw new Error('当前编辑未能保存，请在详情中处理后再切换。'); } }
+      if (save) await extractions.flushDrafts();
       await action();
     } catch (e) { setError(errorMessage(e)); }
     finally { lock.current = false; setBusy(false); }
@@ -65,7 +71,9 @@ export function Workbench({ records, editor, layout, viewports, media, openNote 
   async function connect(from: BoardNode, to: BoardNode) {
     if (from.id === to.id) throw new Error('请选择另一张卡片。');
     if (!to.record) throw new Error('请连接到剧本、人物、场景或镜头卡。');
-    if (role !== '参考' && to.record.kind !== 'shot') throw new Error('这个用途需要连接到镜头卡；普通整理可选择“参考”。');
+    if (role === '拍摄资产') {
+      if (!from.record || !isProductionAsset(from.record) || to.record.kind !== 'script') throw new Error('请从人物、场景或道具连接到剧本。');
+    } else if (role !== '参考' && to.record.kind !== 'shot') throw new Error('这个用途需要连接到镜头卡；关联剧本请选择“拍摄资产”。');
     if (role === '视频候选') {
       if (!from.reference || !isVideoPath(from.reference.path)) throw new Error('视频候选关系需要从视频素材发起。');
       await media.attach(to.record.id, from.reference.path);
@@ -132,9 +140,9 @@ export function Workbench({ records, editor, layout, viewports, media, openNote 
   }}>
     <header className="obcanvas-free-header"><strong>影视画布</strong><select aria-label="当前场次" value={activeScene} disabled={busy} onChange={e => { const id = e.target.value; void run(() => { setSceneId(id); editor.clearSelection(); setSelectedKey(''); setPanel(''); setSourceId(''); }); }}>
       {!scenes.length && <option value="">从剧本或素材开始</option>}{scenes.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
-    </select><button disabled={busy} onClick={() => void create('scene')}>新建场次</button><button disabled={busy || !scene} onClick={() => void run(() => { editor.select(scene!.id); setSelectedKey(`r:${scene!.id}`); setPanel('detail'); })}>场次名称</button><span className="obcanvas-hint">本地资料库 · 0.3.0</span></header>
+    </select><button disabled={busy} onClick={() => void create('scene')}>新建场次</button><button disabled={busy || !scene} onClick={() => void run(() => { editor.select(scene!.id); setSelectedKey(`r:${scene!.id}`); setPanel('detail'); })}>场次名称</button><span className="obcanvas-hint">本地资料库 · 0.4.0</span></header>
     <nav className="obcanvas-free-tools" aria-label="添加到画布">
-      {(['script', 'person', 'setting', 'shot', 'frame'] as const).map(kind => <button key={kind} disabled={busy || catalog.loading} onClick={() => void create(kind)}>＋ {kindLabels[kind]}</button>)}
+      {(['script', 'person', 'setting', 'prop', 'shot', 'frame'] as const).map(kind => <button key={kind} disabled={busy || catalog.loading} onClick={() => void create(kind)}>＋ {kindLabels[kind]}</button>)}
       <button disabled={busy} onClick={() => input.current?.click()}>＋ 图片 / 视频</button><button disabled={busy} onClick={pickAsset}>关联库内素材</button>
       <input ref={input} className="obcanvas-file-input" aria-label="放入画布文件" type="file" multiple accept="image/*,video/*" onChange={e => { const files = Array.from(e.target.files ?? []); e.target.value = ''; void importFiles(files); }} />
       <button onClick={() => void run(() => setPanel(panel === 'tasks' ? '' : 'tasks'))}>查看待办</button><button onClick={() => void run(() => setPanel(panel === 'order' ? '' : 'order'))}>镜头顺序</button>
@@ -153,10 +161,15 @@ export function Workbench({ records, editor, layout, viewports, media, openNote 
       {panel && <aside className="obcanvas-inspector obcanvas-shot-card" aria-label={panel === 'detail' ? '卡片详情' : panel === 'tasks' ? '制作待办' : '镜头顺序'}>
         <div className="obcanvas-card-heading"><h2>{panel === 'detail' ? selected?.label ?? '场次' : panel === 'tasks' ? '下一步做什么' : '镜头顺序'}</h2><button aria-label="关闭详情" onClick={() => void run(() => setPanel(''))}>×</button></div>
         {panel === 'detail' && <>
-          {state.base && (selected?.record || state.base.kind === 'scene') ? <RecordInspector record={state.base} state={state} editor={editor} media={media} busy={busy} openNote={() => void run(() => openNote(state.base!.path))} /> : selected?.reference && <><h3>{selected.title}</h3><Preview key={media.previewKey(selected.reference)} media={media} reference={selected.reference} onReady={() => {}} onUnavailable={() => {}} /><p className="obcanvas-hint">采用和退回请在下方对应镜头中操作。</p></>}
+          {selected?.record?.kind === 'script' && <>
+            <ExtractionPanel script={selected.record} records={catalog.records} service={extractions} start={() => void run(() => { const id = selected.record!.id; void extractions.start(id, owner).catch(() => {}); })} apply={() => void run(async () => { const task = extractions.getSnapshot().tasks.find(t => t.scriptId === selected.record!.id); if (task) await extractions.apply(task); })} openAsset={id => { const node = graph.nodes.find(n => n.record?.id === id); if (node) select(node, true); else setError('资产已移除或无法读取，请检查项目记录。'); }} />
+            <details><summary>关联已有拍摄资产（可跨场次复用）</summary><select aria-label="已有拍摄资产" value={reuseId} onChange={e => setReuseId(e.target.value)}><option value="">选择人物、场景或道具…</option>{catalog.records.filter(isProductionAsset).map(r => <option key={r.id} value={r.id}>{kindLabels[r.kind]} · {r.title}</option>)}</select><button disabled={busy || !reuseId} onClick={() => void run(async () => { await records.attachScriptAsset(await records.requireRecord(selected.record!.id), reuseId); setReuseId(''); })}>关联到剧本</button></details>
+          </>}
+          {selected?.record && isProductionAsset(selected.record) && <AssetPreparation key={selected.record.id} record={selected.record} records={records} media={media} />}
+          {state.base && (selected?.record || state.base.kind === 'scene') ? <RecordInspector record={selected?.record ?? state.base} state={state} editor={editor} media={media} busy={busy} openNote={() => void run(() => openNote(state.base!.path))} /> : selected?.reference && <><h3>{selected.title}</h3><Preview key={media.previewKey(selected.reference)} media={media} reference={selected.reference} onReady={() => {}} onUnavailable={() => {}} /><p className="obcanvas-hint">采用和退回请在下方对应镜头中操作。</p></>}
           {selected && <><h3>这张卡与谁有关</h3>{related.length ? related.map(edge => { const other = graph.nodes.find(n => n.id === (edge.from === selectedKey ? edge.to : edge.from)); return <div className="obcanvas-relation" key={edge.id}><button disabled={!other || busy} onClick={() => { if (other) select(other, true); }}>{edge.label} · {other?.title ?? '来源在其他场次或已移除'}</button><button disabled={busy} onClick={() => removeEdge(edge)} aria-label={`移除${edge.label}关系`}>移除</button></div>; }) : <p className="obcanvas-hint">点击圆点，为这张卡连接用途。</p>}<button disabled={busy} onClick={() => startConnect(selected)}>＋ 连接到另一张卡</button></>}
         </>}
-        {panel === 'tasks' && <><p className="obcanvas-hint">点击一项，直接找到对应镜头。</p>{shots.filter(s => shotStatus(s) !== '已采用' || s.media?.some(m => media.locate(m).error)).map(s => <button className="obcanvas-task" key={s.id} onClick={() => select(graph.nodes.find(n => n.record?.id === s.id)!, true)}>{s.title}<span>{s.media?.some(m => media.locate(m).error) ? '素材缺失，请恢复文件' : shotStatus(s) === '待规划' ? '补充这个镜头的画面内容' : shotStatus(s) === '待素材' ? '准备参考图或放入生成结果' : shotStatus(s) === '待重做' ? '候选已退回，需要重新生成' : '比较候选，选择采用版本'}</span></button>)}{!shots.length && <p>可以先整理剧本和素材，再添加镜头。</p>}</>}
+        {panel === 'tasks' && <><p className="obcanvas-hint">点击一项，直接找到对应资产或镜头。</p>{graph.nodes.filter(n => n.record && isProductionAsset(n.record) && assetStatus(n.record, r => media.referenceReady(r)) !== '已绑定参考图').map(n => <button className="obcanvas-task" key={n.id} onClick={() => select(n, true)}>{n.title}<span>{assetStatus(n.record!, r => media.referenceReady(r))}</span></button>)}{shots.filter(s => shotStatus(s) !== '已采用' || s.media?.some(m => media.locate(m).error)).map(s => <button className="obcanvas-task" key={s.id} onClick={() => select(graph.nodes.find(n => n.record?.id === s.id)!, true)}>{s.title}<span>{s.media?.some(m => media.locate(m).error) ? '素材缺失，请恢复文件' : shotStatus(s) === '待规划' ? '补充这个镜头的画面内容' : shotStatus(s) === '待素材' ? '准备参考图或放入生成结果' : shotStatus(s) === '待重做' ? '候选已退回，需要重新生成' : '比较候选，选择采用版本'}</span></button>)}{!shots.length && <p>可以先整理剧本和素材，再添加镜头。</p>}</>}
         {panel === 'order' && <nav className="obcanvas-order"><p className="obcanvas-hint">这里决定成片顺序；自由拖动卡片不影响顺序。</p>{shots.map((s, i) => <div data-order-shot={s.id} key={s.id}><button onClick={() => select(graph.nodes.find(n => n.record?.id === s.id)!, true)}>{String(i + 1).padStart(2, '0')} · {s.title}</button><span data-shot-status={shotStatus(s)}>{shotStatus(s)}</span><button aria-label={`上移镜头：${s.title}`} disabled={busy || i === 0} onClick={() => void run(() => records.moveShot(scene!, s.id, -1))}>上移</button><button aria-label={`下移镜头：${s.title}`} disabled={busy || i === shots.length - 1} onClick={() => void run(() => records.moveShot(scene!, s.id, 1))}>下移</button></div>)}</nav>}
       </aside>}
       {source && <div className="obcanvas-connect-bar" data-canvas-no-zoom><span>从「{source.title}」连接，点击目标卡片</span><select aria-label="连接用途" value={role} onChange={e => setRole(e.target.value)}>{[...linkRoles, '视频候选'].map(r => <option key={r}>{r}</option>)}</select><button onClick={() => setSourceId('')}>取消连接</button></div>}

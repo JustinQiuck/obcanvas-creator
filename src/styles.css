@@ -104,3 +104,11 @@
 .obcanvas-root .obcanvas-free .obcanvas-alert { max-height: 120px; overflow: auto; flex-shrink: 0; margin: 6px 14px; font-size: 12px; }
 .obcanvas-root .obcanvas-inspector .obcanvas-order { padding: 0; background: transparent; }
 @container (max-width: 600px) { .obcanvas-root .obcanvas-free-header { gap: 5px; padding: 8px; } .obcanvas-root .obcanvas-free-header > .obcanvas-hint { display: none; } .obcanvas-root .obcanvas-free-status > span:first-child { display: none; } }
+.obcanvas-root .obcanvas-extraction, .obcanvas-root .obcanvas-asset-preparation { padding-bottom: 20px; margin-bottom: 20px; border-bottom: 1px solid var(--background-modifier-border); }
+.obcanvas-root .obcanvas-asset-item { min-width: 0; border: 1px solid var(--background-modifier-border); border-radius: 8px; padding: 14px; margin: 18px 0; }
+.obcanvas-root .obcanvas-asset-item legend { color: var(--text-accent); padding: 0 6px; }
+.obcanvas-root .obcanvas-asset-item blockquote { margin: 8px 0 18px; padding: 8px 10px; border-left: 2px solid var(--text-accent); color: var(--text-muted); font-size: 12px; }
+.obcanvas-root .obcanvas-asset-item textarea { min-height: 70px; }
+.obcanvas-root .obcanvas-extraction > button { margin: 4px 6px 4px 0; height: auto; white-space: normal; }
+.obcanvas-root .obcanvas-inspector select { max-width: 100%; }
+.obcanvas-root .obcanvas-asset-preparation .obcanvas-relation { align-items: center; justify-content: space-between; }

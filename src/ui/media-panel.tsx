@@ -1,26 +1,27 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { isVideoPath, type FilmRecord, type MediaRef } from '../model';
+import { isVideoPath, isImagePath, isProductionAsset, assetDetails, type FilmRecord, type MediaRef } from '../model';
 import { VaultMedia } from '../storage/vault-media';
 import { errorMessage } from '../storage/vault-records';
 export function MediaPanel({ shot, media }: { shot: FilmRecord; media: VaultMedia }) {
   useSyncExternalStore(media.subscribe, media.getSnapshot);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const production = isProductionAsset(shot);
   async function run(action: () => Promise<void>) {
     setBusy(true); setError('');
     try { await action(); } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
   }
   const input = useRef<HTMLInputElement>(null);
-  async function importFiles(files: File[]) { await run(async () => { for (const file of files) await media.importFile(shot.id, file); }); }
+  async function importFiles(files: File[]) { await run(async () => { if (production && files.some(f => !isImagePath(f.name))) throw new Error('拍摄资产请绑定参考图片；视频请放到画布或镜头中。'); for (const file of files) await media.importFile(shot.id, file); }); }
   return <section className="obcanvas-media-panel" aria-label="镜头素材" onDragOver={e => { e.preventDefault(); e.stopPropagation(); }} onDrop={e => { e.preventDefault(); e.stopPropagation(); if (!busy) void importFiles(Array.from(e.dataTransfer.files)); }}>
-    <div className="obcanvas-card-heading"><h2>参考图与视频候选</h2><button disabled={busy} onClick={() => media.pick(file => run(() => media.attach(shot.id, file.path)))}>关联库内素材</button></div>
+    <div className="obcanvas-card-heading"><h2>{production ? '绑定参考图' : '参考图与视频候选'}</h2><button disabled={busy} onClick={() => media.pick(file => run(() => { if (production && !isImagePath(file.path)) throw new Error('请选择参考图片。'); return media.attach(shot.id, file.path); }))}>关联库内素材</button></div>
     <input ref={input} className="obcanvas-file-input" type="file" multiple aria-label="复制文件到资料库" accept=".png,.jpg,.jpeg,.webp,.gif,.avif,.mp4,.webm,.mov,.m4v,.ogv" onChange={e => { const files = Array.from(e.target.files ?? []); e.target.value = ''; void importFiles(files); }} />
     <button disabled={busy} onClick={() => input.current?.click()}>复制文件到资料库</button>
-    <p className="obcanvas-hint">可将文件拖到这里，复制并归入当前镜头，原文件保留。视频先作为候选；采用时会保留其他版本。</p>
+    <p className="obcanvas-hint">{production ? '将参考图拖到这里或从资料库选择，指定用途并确认使用。原文件保留。' : '可将文件拖到这里，复制并归入当前卡片，原文件保留。视频先作为候选；采用时会保留其他版本。'}</p>
     {busy && <p role="status">正在保存素材记录…</p>}
     {error && <p role="alert">{error}</p>}
     <div className="obcanvas-media-grid">{(shot.media ?? []).map(ref => <Candidate key={ref.id} shot={shot} reference={ref} media={media} busy={busy} run={run} />)}</div>
-    {!shot.media?.length && <p>这个镜头还没有关联素材。</p>}
+    {!shot.media?.length && <p>{production ? '尚未绑定参考图。' : '这张卡片还没有关联素材。'}</p>}
   </section>;
 }
 function Candidate({ shot, reference: ref, media, busy, run }: { shot: FilmRecord; reference: MediaRef; media: VaultMedia; busy: boolean; run: (action: () => Promise<void>) => Promise<void> }) {
@@ -32,6 +33,11 @@ function Candidate({ shot, reference: ref, media, busy, run }: { shot: FilmRecor
   return <figure data-media-id={ref.id} data-decision={decision}>
     <Preview key={key} media={media} reference={ref} onReady={() => setReadyKey(key)} onUnavailable={() => setReadyKey('')} />
     <figcaption>{ref.path}</figcaption>
+    {isProductionAsset(shot) && isImagePath(ref.path) && <>
+      <label>参考用途<select aria-label="图片参考用途" value={ref.purpose ?? ''} disabled={busy} onChange={e => void run(() => media.bindReference(shot, ref, e.target.value, false))}><option value="" disabled>选择用途</option>{[...new Set([...assetDetails(shot).needs, ...(ref.purpose ? [ref.purpose] : [])])].map(p => <option key={p}>{p}</option>)}</select></label>
+      <span>{ref.confirmed && media.referenceReady(ref) ? '已确认使用' : '待检查参考图'}</span>
+      <button disabled={busy || !ref.purpose || readyKey !== key} onClick={() => void run(() => media.bindReference(shot, ref, ref.purpose!, !(ref.confirmed && media.referenceReady(ref))))}>{ref.confirmed && media.referenceReady(ref) ? '取消参考确认' : '确认使用此图'}</button>
+    </>}
     {video && shot.kind === 'shot' && <><span className="obcanvas-decision">{decision === 'adopted' ? '已采用' : decision === 'rejected' ? '已退回' : '视频候选'}</span>
       {ref.reason && <p className="obcanvas-hint">退回原因：{ref.reason}</p>}
       <div className="obcanvas-media-actions">
