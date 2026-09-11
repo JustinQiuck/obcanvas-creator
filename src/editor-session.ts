@@ -1,4 +1,4 @@
-import { ConflictError, Draft, FilmRecord, Recovery, sameContent } from './model';
+import { ConflictError, Draft, FilmRecord, Recovery, sameContent, draftOf } from './model';
 import { errorMessage, VaultRecords } from './storage/vault-records';
 export type EditorState = {
   selectedId: string | null; base: FilmRecord | null; draft: Draft;
@@ -37,7 +37,7 @@ export class EditorSession {
       if (this.state.base && (!sameContent(latest, this.state.base) || latest.sceneId !== this.state.base.sceneId)) this.emit({ status: 'changed', message: '笔记已有更新。保存时会检查冲突，本地输入已保留。' });
       return;
     }
-    this.emit({ base: latest, draft: { title: latest.title, body: latest.body }, status: 'ready', message: '' });
+    this.emit({ base: latest, draft: draftOf(latest), status: 'ready', message: '' });
   }
   edit(field: keyof Draft, value: string) {
     if (!this.state.base || this.state.saving) return;
@@ -52,7 +52,7 @@ export class EditorSession {
     this.emit({ saving: true, message: '' });
     try {
       const record = await this.records.save(base, draft);
-      this.emit({ base: record, draft: { title: record.title, body: record.body }, dirty: false, saving: false, status: 'saved', message: '已保存到笔记。' });
+      this.emit({ base: record, draft: draftOf(record), dirty: false, saving: false, status: 'saved', message: '已保存到笔记。' });
     } catch (error) {
       this.emit({ saving: false, status: error instanceof ConflictError ? 'conflict' : 'error', message: errorMessage(error) });
     }
@@ -62,6 +62,6 @@ export class EditorSession {
     await this.records.refresh();
     const record = this.records.getSnapshot().records.find(r => r.id === this.state.selectedId && r.kind === 'shot');
     if (!record) return;
-    this.emit({ base: record, draft: { title: record.title, body: record.body }, dirty: false, status: 'ready', message: '已载入笔记版本。' });
+    this.emit({ base: record, draft: draftOf(record), dirty: false, status: 'ready', message: '已载入笔记版本。' });
   }
 }

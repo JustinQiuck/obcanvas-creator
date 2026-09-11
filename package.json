@@ -1,6 +1,6 @@
 {
   "name": "obcanvas-creator",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -14,7 +14,9 @@
     "prepare:test-media": "node scripts/prepare-media-fixtures.mjs",
     "test:canvas-media": "node scripts/test-canvas-media.mjs",
     "test:canvas-media:reopen": "node scripts/test-canvas-media.mjs --reopen",
-    "stop:test-vault": "node scripts/launch-test-obsidian.mjs --stop"
+    "stop:test-vault": "node scripts/launch-test-obsidian.mjs --stop",
+    "test:selection": "node scripts/test-selection.mjs",
+    "test:selection:reopen": "node scripts/test-selection.mjs --reopen"
   },
   "dependencies": {
     "react": "19.3.0",

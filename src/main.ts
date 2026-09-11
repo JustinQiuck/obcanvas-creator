@@ -47,7 +47,15 @@ export default class ObCanvasPlugin extends Plugin {
     this.app.workspace.onLayoutReady(() => { void this.records.refresh(); void this.layout.refresh(); });
   }
   async openView(newTab = false) {
-    const leaf = !newTab && this.app.workspace.getLeavesOfType(VIEW_TYPE)[0] || this.app.workspace.getLeaf('tab');
+    let leaf = newTab ? undefined : this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
+    if (!leaf) {
+      try { leaf = this.app.workspace.getLeaf('tab'); }
+      catch (error) {
+        // During unload/last-tab closure the workspace may temporarily have no tab group.
+        if (!(error instanceof Error) || error.message !== 'No tab group found.') throw error;
+        leaf = this.app.workspace.getLeaf(false);
+      }
+    }
     await leaf.setViewState({ type: VIEW_TYPE, active: true });
     await this.app.workspace.revealLeaf(leaf);
   }

@@ -1,7 +1,7 @@
 import { FuzzySuggestModal, Notice, type App, type TFile } from 'obsidian';
-import type { MediaRef } from '../model';
+import type { MediaRef, FilmRecord } from '../model';
 import { validMediaPath } from '../model';
-import { errorMessage, VaultRecords } from './vault-records';
+import { errorMessage, VaultRecords, PROJECT_ROOT } from './vault-records';
 export function mediaKind(path: string): 'image' | 'video' | null {
   const ext = path.split('.').pop()?.toLowerCase();
   if (ext && ['png', 'jpg', 'jpeg', 'webp', 'gif', 'avif'].includes(ext)) return 'image';
@@ -47,19 +47,44 @@ export class VaultMedia {
       await this.records.editMedia(shotId, items => items.some(m => m.path === path) ? items : [...items, ref]);
     });
   }
-  remove(shotId: string, id: string) { return this.enqueue(() => this.records.editMedia(shotId, items => items.filter(m => m.id !== id))); }
+  remove(shotId: string, id: string) { return this.enqueue(() => this.records.editMedia(shotId, items => {
+    if (items.some(m => m.id === id && m.decision === 'adopted')) throw new Error('请先取消采用，再移除这份视频。');
+    return items.filter(m => m.id !== id);
+  })); }
+  decide(shot: FilmRecord, id: string, decision: NonNullable<MediaRef['decision']>, reason?: string) {
+    return this.enqueue(async () => {
+      const ref = shot.media?.find(m => m.id === id);
+      if (decision === 'adopted' && (!ref || this.locate(ref).error)) throw new Error('视频文件无法读取，请先恢复或重新关联。');
+      await this.records.decide(shot, id, decision, reason);
+    });
+  }
+  async importFile(shotId: string, file: File) {
+    if (!mediaKind(file.name)) throw new Error('请选择支持的图片或视频格式。');
+    if (file.size > 256 * 1024 * 1024) throw new Error('超过 256 MB 的文件请先放入资料库，再使用“关联库内素材”。');
+    const folder = `${PROJECT_ROOT}/素材`;
+    if (!this.app.vault.getAbstractFileByPath(folder)) {
+      try { await this.app.vault.createFolder(folder); } catch (e) { if (!this.app.vault.getAbstractFileByPath(folder)) throw e; }
+    }
+    const filename = file.name.replace(/[\\/:\x00-\x1f]/g, '_');
+    const path = `${folder}/${crypto.randomUUID()}-${filename}`;
+    await this.app.vault.createBinary(path, await file.arrayBuffer());
+    try { await this.attach(shotId, path); }
+    catch (e) { throw new Error(`文件已复制到 ${path}，关联失败：${errorMessage(e)}。可通过“关联库内素材”重试。`); }
+  }
   relink(ref: MediaRef, path: string) {
     return this.enqueue(async () => {
       if (!validMediaPath(path) || !mediaKind(path) || !this.app.vault.getFileByPath(path)) throw new Error('请选择资料库内的图片或视频。');
       await this.records.refresh();
       const records = this.records.getSnapshot().records;
+      if (path !== ref.path && records.some(r => r.media?.some(m => m.id === ref.id && m.decision === 'adopted'))) throw new Error('这份视频已有镜头采用，请先取消采用，再替换文件。');
       const canonical = records.flatMap(r => r.media ?? []).find(m => m.path === path);
       // Relinking deliberately applies to every shot using this media ID.
       for (const record of records.filter(r => r.kind === 'shot' && r.media?.some(m => m.id === ref.id))) {
         await this.records.editMedia(record.id, items => {
           const current = items.find(m => m.id === ref.id);
           if (current && current.path !== ref.path && current.path !== path) throw new Error('素材关联已被修改，请载入最新记录后重试。');
-          const updated = items.map(m => m.id === ref.id ? { ...m, id: canonical?.id ?? m.id, path } : m);
+          if (canonical && canonical.id !== ref.id && items.some(m => m.id === canonical.id)) throw new Error('该镜头已关联目标素材，请移除旧关联，避免合并时丢失选片记录。');
+          const updated = items.map(m => m.id === ref.id ? { ...m, id: canonical?.id ?? m.id, path, ...(path !== m.path ? { decision: undefined, reason: undefined } : {}) } : m);
           return updated.filter((m, i) => updated.findIndex(other => other.id === m.id) === i);
         });
       }

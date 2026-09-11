@@ -1,5 +1,5 @@
 import type { Vault, TFile } from 'obsidian';
-import { FilmRecord, Draft, RecordError, newRecord, parseRecord, patchRecord, patchMedia, type MediaRef } from '../model';
+import { FilmRecord, Draft, RecordError, ConflictError, newRecord, parseRecord, patchRecord, patchMedia, patchOrder, orderedShots, decideMedia, type MediaRef } from '../model';
 
 export const PROJECT_ROOT = '影视项目';
 export type Catalog = { records: FilmRecord[]; problems: string[]; loading: boolean };
@@ -63,6 +63,10 @@ export class VaultRecords {
     const source = newRecord(kind, id, title, sceneId);
     await this.vault.create(path, source);
     await this.refresh();
+    if (kind === 'shot') {
+      try { await this.appendOrder(sceneId!, id); }
+      catch (e) { throw new RecordError(`镜头已创建，但顺序保存失败：${errorMessage(e)}。请在镜头顺序列表中调整位置后重试，不必重复创建。`); }
+    }
     return parseRecord(source, path)!;
   }
   async editMedia(shotId: string, edit: (items: MediaRef[]) => MediaRef[]) {
@@ -70,6 +74,35 @@ export class VaultRecords {
     const entry = entries.find(e => e.record.id === shotId && e.record.kind === 'shot');
     if (!entry) throw new RecordError('镜头不存在、编号重复或无法读取，未修改关联。');
     await this.vault.process(entry.file, current => patchMedia(current, shotId, edit));
+    await this.refresh();
+  }
+  private async appendOrder(sceneId: string, id: string) {
+    const { entries } = await this.scan();
+    const scene = entries.find(e => e.record.id === sceneId && e.record.kind === 'scene');
+    if (!scene) throw new RecordError('所属场次无法读取。');
+    const existing = orderedShots(scene.record, entries.map(e => e.record)).filter(r => r.id !== id).map(r => r.id);
+    await this.vault.process(scene.file, raw => patchOrder(raw, sceneId, ids => [...new Set([...ids, ...existing, id])]));
+    await this.refresh();
+  }
+  async moveShot(base: FilmRecord, shotId: string, direction: -1 | 1) {
+    const { entries } = await this.scan();
+    const scene = entries.find(e => e.record.id === base.id && e.record.kind === 'scene');
+    if (!scene) throw new RecordError('场次无法读取。');
+    const shots = orderedShots(scene.record, entries.map(e => e.record)).map(r => r.id);
+    const index = shots.indexOf(shotId), target = index + direction;
+    if (index < 0 || target < 0 || target >= shots.length) throw new RecordError('镜头位置已变化，请检查最新列表。');
+    [shots[index], shots[target]] = [shots[target]!, shots[index]!];
+    await this.vault.process(scene.file, raw => patchOrder(raw, base.id, ids => {
+      if (JSON.stringify(ids) !== JSON.stringify(base.shotOrder ?? [])) throw new ConflictError('镜头顺序已被其他窗口修改，请检查最新顺序后重试。');
+      return [...shots, ...ids.filter(id => !shots.includes(id))];
+    }));
+    await this.refresh();
+  }
+  async decide(base: FilmRecord, mediaId: string, decision: NonNullable<MediaRef['decision']>, reason?: string) {
+    const { entries } = await this.scan();
+    const entry = entries.find(e => e.record.id === base.id && e.record.kind === 'shot');
+    if (!entry) throw new RecordError('镜头无法读取，未更改选片记录。');
+    await this.vault.process(entry.file, raw => decideMedia(raw, base, mediaId, decision, reason));
     await this.refresh();
   }
 }

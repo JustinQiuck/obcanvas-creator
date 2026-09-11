@@ -48,3 +48,18 @@
 .obcanvas-root .obcanvas-media-error { color: var(--text-error); }
 @media (max-width: 900px) { .obcanvas-root .obcanvas-columns { grid-template-columns: minmax(0, 1fr); } .obcanvas-root .obcanvas-surface { height: 380px; } }
 @container (max-width: 760px) { .obcanvas-root .obcanvas-columns { grid-template-columns: minmax(0, 1fr); } .obcanvas-root .obcanvas-surface { height: 380px; } }
+.obcanvas-root .obcanvas-progress { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; font-size: 12px; }
+.obcanvas-root .obcanvas-progress span { padding: 6px 10px; border: 1px solid var(--background-modifier-border); border-radius: 6px; }
+.obcanvas-root .obcanvas-order { margin-bottom: 20px; padding: 16px; background: var(--background-secondary); border-radius: 8px; }
+.obcanvas-root .obcanvas-order h2 { margin-bottom: 6px; }
+.obcanvas-root .obcanvas-order > div { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; font-size: 12px; }
+.obcanvas-root .obcanvas-order > div > button:first-child { flex: 1; min-width: 160px; justify-content: start; overflow: hidden; text-overflow: ellipsis; }
+.obcanvas-root .obcanvas-order button[aria-pressed="true"] { color: var(--text-accent); }
+.obcanvas-root .obcanvas-missing { color: var(--text-error); }
+.obcanvas-root .obcanvas-decision { display: inline-block; margin: 4px 0 8px; font-size: 12px; color: var(--text-accent); }
+.obcanvas-root .obcanvas-media-actions { margin-top: 8px; }
+.obcanvas-root .obcanvas-shot-card .obcanvas-reason { margin: 10px 0 6px; }
+.obcanvas-root .obcanvas-file-input { display: none; }
+.obcanvas-root details { margin-bottom: 20px; }
+.obcanvas-root details summary { margin-bottom: 12px; cursor: pointer; }
+.obcanvas-root .obcanvas-editor-fields { border: 0; padding: 0; margin: 0; min-width: 0; }

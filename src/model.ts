@@ -1,13 +1,30 @@
 import { isMap, isSeq, parseDocument, stringify } from 'yaml';
 
 export type RecordKind = 'scene' | 'shot';
-export type MediaRef = { id: string; path: string };
+export type MediaRef = { id: string; path: string; decision?: 'candidate' | 'adopted' | 'rejected'; reason?: string };
+export const planningFields = ['intent', 'framing', 'camera', 'prompt', 'source'] as const;
+export const draftFields = ['title', 'body', ...planningFields] as const;
+export type Planning = Partial<Record<typeof planningFields[number], string>>;
+export function isVideoPath(path: string) { return /\.(mp4|webm|mov|m4v|ogv)$/i.test(path); }
+export function shotStatus(shot: FilmRecord) {
+  const videos = (shot.media ?? []).filter(m => isVideoPath(m.path));
+  if (videos.some(m => m.decision === 'adopted')) return '已采用';
+  if (videos.some(m => m.decision !== 'rejected')) return '待选片';
+  if (videos.length) return '待重做';
+  return shot.body.trim() || shot.intent?.trim() || shot.framing?.trim() ? '待素材' : '待规划';
+}
+export function orderedShots(scene: FilmRecord | undefined, records: FilmRecord[]) {
+  const shots = records.filter(r => r.kind === 'shot' && r.sceneId === scene?.id);
+  const ranks = new Map((scene?.shotOrder ?? []).map((id, i) => [id, i]));
+  return shots.sort((a, b) => (ranks.get(a.id) ?? Infinity) - (ranks.get(b.id) ?? Infinity) || a.id.localeCompare(b.id));
+}
 export function validMediaPath(path: string) { return !!path && !/^(?:[a-z]+:|\/)/i.test(path) && !path.includes('\\') && !path.split('/').some(p => !p || p === '.' || p === '..') && !/[\x00-\x1f]/.test(path); }
-export type FilmRecord = {
+export type FilmRecord = Planning & {
   id: string; kind: RecordKind; version: 1; title: string; body: string;
-  sceneId?: string; path: string; media?: MediaRef[];
+  sceneId?: string; path: string; media?: MediaRef[]; shotOrder?: string[];
 };
-export type Draft = Pick<FilmRecord, 'title' | 'body'>;
+export type Draft = Pick<FilmRecord, 'title' | 'body'> & Planning;
+export function draftOf(record: FilmRecord): Draft { return Object.fromEntries(draftFields.map(f => [f, record[f] ?? ''])) as Draft; }
 export class RecordError extends Error {}
 export class ConflictError extends RecordError {}
 
@@ -31,7 +48,13 @@ export function parseRecord(source: string, path: string): FilmRecord | null {
   if ((meta.kind !== 'scene' && meta.kind !== 'shot') || typeof meta.id !== 'string' || !meta.id.trim() || typeof meta.title !== 'string' || !meta.title.trim()) throw new RecordError('记录缺少有效的类型、编号或标题。');
   if (meta.kind === 'shot' && (typeof meta.sceneId !== 'string' || !meta.sceneId.trim())) throw new RecordError('镜头缺少所属场次编号。');
   if (meta.media !== undefined && (!Array.isArray(meta.media) || !meta.media.every(m => object(m) && typeof m.id === 'string' && !!m.id.trim() && typeof m.path === 'string' && validMediaPath(m.path)) || new Set(meta.media.map(m => m.id)).size !== meta.media.length)) throw new RecordError('素材关联格式无效，请保留并检查笔记。');
-  return { id: meta.id, kind: meta.kind, version: 1, title: meta.title, body: note.body, path, ...(meta.media ? { media: meta.media as MediaRef[] } : {}), ...(meta.kind === 'shot' ? { sceneId: meta.sceneId as string } : {}) };
+  for (const m of (meta.media ?? []) as MediaRef[]) {
+    if ((m.decision !== undefined && !['candidate', 'adopted', 'rejected'].includes(m.decision)) || (m.reason !== undefined && typeof m.reason !== 'string') || (m.decision && m.decision !== 'candidate' && !isVideoPath(m.path)) || (m.decision === 'rejected' && !m.reason?.trim())) throw new RecordError('素材选片记录无效，请保留并检查笔记。');
+  }
+  if (((meta.media ?? []) as MediaRef[]).filter(m => m.decision === 'adopted').length > 1) throw new RecordError('一个镜头只能采用一份视频，请检查笔记。');
+  if (meta.shotOrder !== undefined && (!Array.isArray(meta.shotOrder) || !meta.shotOrder.every(id => typeof id === 'string' && !!id) || new Set(meta.shotOrder).size !== meta.shotOrder.length)) throw new RecordError('镜头顺序格式无效，请检查场次笔记。');
+  for (const field of planningFields) if (meta[field] !== undefined && typeof meta[field] !== 'string') throw new RecordError('镜头规划字段必须是文字。');
+  return { id: meta.id, kind: meta.kind, version: 1, title: meta.title, body: note.body, path, ...Object.fromEntries(planningFields.filter(f => meta[f] !== undefined).map(f => [f, meta[f]])), ...(meta.shotOrder ? { shotOrder: meta.shotOrder as string[] } : {}), ...(meta.media ? { media: meta.media as MediaRef[] } : {}), ...(meta.kind === 'shot' ? { sceneId: meta.sceneId as string } : {}) };
 }
 export function patchMedia(source: string, shotId: string, edit: (items: MediaRef[]) => MediaRef[]) {
   const latest = parseRecord(source, '');
@@ -45,7 +68,13 @@ export function patchMedia(source: string, shotId: string, edit: (items: MediaRe
   const sequence = note.document.createNode(next as unknown[]);
   if ('items' in sequence) next.forEach((m, i) => {
     const node = nodes.get(m.id);
-    if (isMap(node)) { node.set('path', m.path); sequence.items[i] = node; }
+    if (isMap(node)) {
+      node.set('path', m.path);
+      for (const field of ['decision', 'reason'] as const) {
+        if (m[field] !== undefined) node.set(field, m[field]); else node.delete(field);
+      }
+      sequence.items[i] = node;
+    }
   });
   note.document.setIn(['obcanvas', 'media'], sequence);
   const result = `${note.bom}---${note.eol}${note.document.toString().replace(/\n/g, note.eol)}---${note.eol}${note.body}`;
@@ -55,20 +84,22 @@ export function patchMedia(source: string, shotId: string, edit: (items: MediaRe
 export function newRecord(kind: RecordKind, id: string, title: string, sceneId?: string) {
   return `---\n${stringify({ obcanvas: { version: 1, kind, id, title, ...(kind === 'shot' ? { sceneId } : {}) } })}---\n`;
 }
-export function sameContent(a: Draft, b: Draft) { return a.title === b.title && a.body === b.body; }
+export function sameContent(a: Draft, b: Draft) { return draftFields.every(f => (a[f] ?? '') === (b[f] ?? '')); }
 export function patchRecord(source: string, base: FilmRecord, draft: Draft): string {
   if (!draft.title.trim()) throw new RecordError('请填写镜头标题。');
   const latest = parseRecord(source, base.path);
   if (!latest || latest.id !== base.id || latest.kind !== base.kind || latest.sceneId !== base.sceneId) throw new ConflictError('记录身份或所属场次已变化，请重新载入笔记。');
-  for (const field of ['title', 'body'] as const) {
-    if (draft[field] !== base[field] && latest[field] !== base[field] && latest[field] !== draft[field]) throw new ConflictError(`${field === 'title' ? '标题' : '镜头内容'}已被其他窗口或笔记修改，本地输入已保留。`);
+  for (const field of draftFields) {
+    if ((draft[field] ?? '') !== (base[field] ?? '') && (latest[field] ?? '') !== (base[field] ?? '') && (latest[field] ?? '') !== (draft[field] ?? '')) throw new ConflictError(`${field === 'title' ? '标题' : field === 'body' ? '镜头内容' : '镜头规划字段'}已被其他窗口或笔记修改，本地输入已保留。`);
   }
   const next = { title: draft.title === base.title ? latest.title : draft.title, body: draft.body === base.body ? latest.body : draft.body };
   const note = splitNote(source)!;
   let header = note.header;
-  if (next.title !== latest.title) {
+  const changedPlan = planningFields.filter(f => (draft[f] ?? '') !== (base[f] ?? ''));
+  if (next.title !== latest.title || changedPlan.length) {
     if (!isMap(note.document.contents) || !isMap(note.document.get('obcanvas', true))) throw new RecordError('记录属性格式无效。');
     note.document.setIn(['obcanvas', 'title'], next.title);
+    for (const field of changedPlan) note.document.setIn(['obcanvas', field], draft[field] ?? '');
     header = `${note.bom}---${note.eol}${note.document.toString().replace(/\n/g, note.eol)}---${note.eol}`;
   }
   return header + next.body;
@@ -77,5 +108,23 @@ export type Recovery = { base: FilmRecord; draft: Draft };
 export function isRecovery(value: unknown): value is Recovery {
   if (!object(value) || !object(value.base) || !object(value.draft)) return false;
   const b = value.base, d = value.draft;
-  return b.version === 1 && b.kind === 'shot' && ['id', 'title', 'body', 'path', 'sceneId'].every(k => typeof b[k] === 'string') && typeof d.title === 'string' && typeof d.body === 'string';
+  return b.version === 1 && b.kind === 'shot' && ['id', 'title', 'body', 'path', 'sceneId'].every(k => typeof b[k] === 'string') && typeof d.title === 'string' && typeof d.body === 'string' && planningFields.every(f => (b[f] === undefined || typeof b[f] === 'string') && (d[f] === undefined || typeof d[f] === 'string'));
+}
+export function patchOrder(source: string, sceneId: string, edit: (ids: string[]) => string[]) {
+  const scene = parseRecord(source, '');
+  if (!scene || scene.kind !== 'scene' || scene.id !== sceneId) throw new ConflictError('场次身份已变化，请重新载入。');
+  const next = edit(scene.shotOrder ?? []);
+  const note = splitNote(source)!;
+  note.document.setIn(['obcanvas', 'shotOrder'], next);
+  const result = `${note.bom}---${note.eol}${note.document.toString().replace(/\n/g, note.eol)}---${note.eol}${note.body}`;
+  parseRecord(result, ''); return result;
+}
+export function decideMedia(source: string, base: FilmRecord, mediaId: string, decision: NonNullable<MediaRef['decision']>, reason = '') {
+  const signature = (items: MediaRef[]) => JSON.stringify(items.filter(m => isVideoPath(m.path)).map(m => [m.id, m.path, m.decision ?? 'candidate', m.reason ?? '']));
+  return patchMedia(source, base.id, items => {
+    if (signature(items) !== signature(base.media ?? [])) throw new ConflictError('选片记录已被其他窗口修改，请检查最新候选后重试。');
+    if (!items.some(m => m.id === mediaId && isVideoPath(m.path))) throw new RecordError('视频候选已移除或变更。');
+    if (decision === 'rejected' && !reason.trim()) throw new RecordError('请填写退回原因。');
+    return items.map(m => m.id === mediaId ? { ...m, decision, reason: decision === 'rejected' ? reason.trim() : undefined } : decision === 'adopted' && m.decision === 'adopted' ? { ...m, decision: 'candidate', reason: undefined } : m);
+  });
 }
