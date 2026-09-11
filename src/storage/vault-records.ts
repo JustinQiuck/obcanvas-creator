@@ -5,7 +5,7 @@ import type { AssetItem } from '../ai/extraction-model';
 
 export const PROJECT_ROOT = '影视项目';
 export type Catalog = { records: FilmRecord[]; problems: string[]; loading: boolean };
-type VaultAccess = Pick<Vault, 'getMarkdownFiles' | 'read' | 'process' | 'create' | 'createFolder' | 'getAbstractFileByPath'>;
+type VaultAccess = Pick<Vault, 'getMarkdownFiles' | 'read' | 'process' | 'create' | 'createFolder' | 'getAbstractFileByPath' | 'trash'>;
 export class VaultRecords {
   private snapshot: Catalog = { records: [], problems: [], loading: true };
   private listeners = new Set<() => void>();
@@ -47,6 +47,32 @@ export class VaultRecords {
     const record = parseRecord(written, entry.file.path)!;
     await this.refresh();
     return record;
+  }
+  async trashCard(base: FilmRecord) {
+    if (base.kind === 'scene') throw new RecordError('场次包含其他卡片，不能通过卡片删除操作移除。');
+    const { entries } = await this.scan();
+    const entry = entries.find(e => e.record.id === base.id);
+    if (!entry) throw new RecordError('卡片已移除、编号重复或无法读取，未执行删除。');
+    if (JSON.stringify(entry.record) !== JSON.stringify(base)) throw new ConflictError('卡片已被修改，请取消后重新检查再删除。');
+    // Keep incoming links and saved positions so restoring the note restores its context.
+    // Media files and other records are never passed to trash.
+    await this.vault.trash(entry.file, false);
+    await this.refresh();
+  }
+  async removeMediaCard(sceneId: string, ref: MediaRef) {
+    const { entries, problems } = await this.scan();
+    if (problems.length) throw new RecordError('项目中有无法读取的记录，请先修复再移除素材卡。');
+    const affected = entries.filter(e => e.record.sceneId === sceneId && (e.record.media?.some(m => m.id === ref.id) || e.record.links?.some(l => l.from === `m:${ref.id}`)));
+    if (affected.some(e => e.record.media?.some(m => m.id === ref.id && m.decision === 'adopted'))) throw new RecordError('此素材已有镜头采用，请先在对应镜头取消采用，再移除素材卡。');
+    if (affected.some(e => e.record.media?.some(m => m.id === ref.id && m.path !== ref.path))) throw new ConflictError('素材位置已变化，请重新检查后操作。');
+    try {
+      for (const entry of affected) await this.vault.process(entry.file, raw => {
+        const current = parseRecord(raw, entry.file.path);
+        if (!current || JSON.stringify(current) !== JSON.stringify(entry.record)) throw new ConflictError('关联卡片已修改，请重新检查后操作。');
+        return patchLinks(patchMedia(raw, current.id, items => items.filter(m => m.id !== ref.id)), current.id, links => links.filter(l => l.from !== `m:${ref.id}`));
+      });
+    } catch (e) { throw new RecordError(`素材卡尚未全部移除：${errorMessage(e)} 已完成的移除会保留，可重试；源文件未删除。`); }
+    finally { await this.refresh(); }
   }
   async create(kind: RecordKind, sceneId?: string) {
     if (kind !== 'scene') {

@@ -11,11 +11,13 @@ import { RecordInspector } from './record-inspector';
 import { ExtractionPanel } from './extraction-panel';
 import { AssetPreparation } from './asset-preparation';
 import type { ExtractionService } from '../ai/extraction-service';
+import { DeleteCardDialog } from './delete-card-dialog';
 import { Viewports } from '../canvas/viewports';
 import { orderedShots, shotStatus, kindLabels, linkRoles, draftOf, isVideoPath, type RecordKind, type CardLink } from '../model';
 import { isProductionAsset, assetStatus } from '../model';
 
 export function Workbench({ records, editor, layout, viewports, media, openNote, extractions, owner }: { records: VaultRecords; editor: EditorSession; layout: VaultLayout; viewports: Viewports; media: VaultMedia; openNote: (path: string) => Promise<void>; extractions: ExtractionService; owner: string }) {
+  const extractionState = useSyncExternalStore(extractions.subscribe, extractions.getSnapshot);
   const catalog = useSyncExternalStore(records.subscribe, records.getSnapshot);
   const state = useSyncExternalStore(editor.subscribe, editor.getSnapshot);
   const layoutState = useSyncExternalStore(layout.subscribe, layout.getSnapshot);
@@ -27,6 +29,7 @@ export function Workbench({ records, editor, layout, viewports, media, openNote,
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [sourceId, setSourceId] = useState(''), [role, setRole] = useState('参考');
   const [reuseId, setReuseId] = useState('');
+  const [deleting, setDeleting] = useState<BoardNode | null>(null), [notice, setNotice] = useState('');
   const lock = useRef(false), input = useRef<HTMLInputElement>(null), board = useRef<HTMLDivElement>(null);
   const scenes = catalog.records.filter(r => r.kind === 'scene');
   const activeScene = sceneId || state.base?.sceneId || scenes[0]?.id || '';
@@ -125,6 +128,24 @@ export function Workbench({ records, editor, layout, viewports, media, openNote,
   }
   function pickAsset() { media.pick(async file => { await run(async () => { const id = await ensureScene(), r = await records.create('asset', id); await records.save(r, { ...draftOf(r), title: file.basename }); await media.attach(r.id, file.path); place(id, r.id); editor.select(r.id); setSelectedKey(`r:${r.id}`); setPanel('detail'); }); }); }
   function removeEdge(edge: BoardEdge) { void run(async () => { if (edge.media) await media.remove(edge.target.id, edge.media.id); else if (edge.link) await records.editLinks(edge.target.id, links => links.filter(l => l.id !== edge.link!.id)); }); }
+  function requestDelete(target = selected) {
+    if (!target || extractions.getSnapshot().busy) return;
+    void run(async () => {
+      const latest = target.record ? await records.requireRecord(target.record.id) : undefined;
+      const node = latest ? { ...target, record: latest, title: latest.title } : target;
+      setSourceId(''); setDeleting(node);
+    });
+  }
+  function confirmDelete() {
+    if (!deleting) return;
+    void run(async () => {
+      if (extractions.getSnapshot().busy) throw new Error('请等待资产整理完成或取消后再删除。');
+      if (deleting.record) await records.trashCard(deleting.record);
+      else if (deleting.reference) await records.removeMediaCard(activeScene, deleting.reference);
+      editor.clearSelection(); setSelectedKey(''); setSourceId(''); setPanel(''); setDeleting(null);
+      setNotice(deleting.record ? `「${deleting.title}」已移入资料库回收站，图片和视频文件保留。` : '素材卡已从当前场次移除，源文件保留。');
+    }, false);
+  }
   function fit() {
     if (!graph.nodes.length) return;
     const rect = board.current!.getBoundingClientRect(), positions = graph.nodes.map(n => position(n));
@@ -136,11 +157,13 @@ export function Workbench({ records, editor, layout, viewports, media, openNote,
   const related = graph.edges.filter(e => e.from === selectedKey || e.to === selectedKey);
   return <section className="obcanvas-workbench obcanvas-free" aria-label="影视画布工作台" onKeyDown={e => {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') { e.preventDefault(); e.stopPropagation(); void editor.save(); }
+    if ((e.key === 'Delete' || e.key === 'Backspace') && !e.metaKey && !e.ctrlKey && !e.altKey && !deleting && (e.target as Element).closest('[data-node-id]') && !(e.target as Element).closest('input, textarea, select, button, [contenteditable]')) { e.preventDefault(); e.stopPropagation(); requestDelete(graph.nodes.find(n => n.id === (e.target as HTMLElement).closest<HTMLElement>('[data-node-id]')?.dataset.nodeId)); }
     if (e.key === 'Escape') { setSourceId(''); void run(() => setPanel('')); }
   }}>
+    {deleting && <DeleteCardDialog node={deleting} records={catalog.records} busy={busy} error={error} cancel={() => { if (!busy) { setDeleting(null); setError(''); } }} confirm={confirmDelete} />}
     <header className="obcanvas-free-header"><strong>影视画布</strong><select aria-label="当前场次" value={activeScene} disabled={busy} onChange={e => { const id = e.target.value; void run(() => { setSceneId(id); editor.clearSelection(); setSelectedKey(''); setPanel(''); setSourceId(''); }); }}>
       {!scenes.length && <option value="">从剧本或素材开始</option>}{scenes.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
-    </select><button disabled={busy} onClick={() => void create('scene')}>新建场次</button><button disabled={busy || !scene} onClick={() => void run(() => { editor.select(scene!.id); setSelectedKey(`r:${scene!.id}`); setPanel('detail'); })}>场次名称</button><span className="obcanvas-hint">本地资料库 · 0.4.1</span></header>
+    </select><button disabled={busy} onClick={() => void create('scene')}>新建场次</button><button disabled={busy || !scene} onClick={() => void run(() => { editor.select(scene!.id); setSelectedKey(`r:${scene!.id}`); setPanel('detail'); })}>场次名称</button><span className="obcanvas-hint">本地资料库 · 0.4.2</span></header>
     <nav className="obcanvas-free-tools" aria-label="添加到画布">
       {(['script', 'person', 'setting', 'prop', 'shot', 'frame'] as const).map(kind => <button key={kind} disabled={busy || catalog.loading} onClick={() => void create(kind)}>＋ {kindLabels[kind]}</button>)}
       <button disabled={busy} onClick={() => input.current?.click()}>＋ 图片 / 视频</button><button disabled={busy} onClick={pickAsset}>关联库内素材</button>
@@ -159,7 +182,7 @@ export function Workbench({ records, editor, layout, viewports, media, openNote,
       </InfiniteCanvas>
       {!catalog.loading && !graph.nodes.length && <div className="obcanvas-start"><h1>把故事放上来。</h1><p>粘贴剧本，或直接拖入人物照片、场景图和视频。<br />放好之后，再连接它们的用途。</p><button className="mod-cta" disabled={busy} onClick={() => void create('script')}>＋ 放入剧本</button></div>}
       {panel && <aside className="obcanvas-inspector obcanvas-shot-card" aria-label={panel === 'detail' ? '卡片详情' : panel === 'tasks' ? '制作待办' : '镜头顺序'}>
-        <div className="obcanvas-card-heading"><h2>{panel === 'detail' ? selected?.label ?? '场次' : panel === 'tasks' ? '下一步做什么' : '镜头顺序'}</h2><button aria-label="关闭详情" onClick={() => void run(() => setPanel(''))}>×</button></div>
+        <div className="obcanvas-card-heading"><h2>{panel === 'detail' ? selected?.label ?? '场次' : panel === 'tasks' ? '下一步做什么' : '镜头顺序'}</h2><span>{panel === 'detail' && selected && <button disabled={busy || state.saving || extractionState.busy} onClick={() => requestDelete()}>{selected.record ? '删除卡片' : '移除素材卡'}</button>}<button aria-label="关闭详情" onClick={() => void run(() => setPanel(''))}>×</button></span></div>
         {panel === 'detail' && <>
           {selected?.record?.kind === 'script' && <>
             <ExtractionPanel script={selected.record} records={catalog.records} service={extractions} start={() => void run(() => { const id = selected.record!.id; void extractions.start(id, owner).catch(() => {}); })} apply={() => void run(async () => { const task = extractions.getSnapshot().tasks.find(t => t.scriptId === selected.record!.id); if (task) await extractions.apply(task); })} openAsset={id => { const node = graph.nodes.find(n => n.record?.id === id); if (node) select(node, true); else setError('资产已移除或无法读取，请检查项目记录。'); }} />
@@ -174,6 +197,6 @@ export function Workbench({ records, editor, layout, viewports, media, openNote,
       </aside>}
       {source && <div className="obcanvas-connect-bar" data-canvas-no-zoom><span>从「{source.title}」连接，点击目标卡片</span><select aria-label="连接用途" value={role} onChange={e => setRole(e.target.value)}>{[...linkRoles, '视频候选'].map(r => <option key={r}>{r}</option>)}</select><button onClick={() => setSourceId('')}>取消连接</button></div>}
     </div>
-    <div className="obcanvas-free-status" role="status"><span>{busy ? '正在保存…' : '拖动卡片整理 · 拖动空白处平移 · 滚轮缩放 · 点击圆点连接'}</span><span data-layout-status={layoutState.status}>{layoutState.status === 'saved' ? '布局已保存' : layoutState.status === 'pending' ? '正在保存布局…' : layoutState.message}</span>{layoutState.status === 'error' && <button onClick={() => void layout.flush().then(() => layout.refresh()).catch(() => {})}>重试保存布局</button>}</div>
+    <div className="obcanvas-free-status" role="status"><span>{busy ? '正在保存…' : notice || '拖动卡片整理 · 拖动空白处平移 · 滚轮缩放 · 点击圆点连接'}</span><span data-layout-status={layoutState.status}>{layoutState.status === 'saved' ? '布局已保存' : layoutState.status === 'pending' ? '正在保存布局…' : layoutState.message}</span>{layoutState.status === 'error' && <button onClick={() => void layout.flush().then(() => layout.refresh()).catch(() => {})}>重试保存布局</button>}</div>
   </section>;
 }

@@ -1,7 +1,7 @@
 {
   "id": "obcanvas-creator",
   "name": "影视画布",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "minAppVersion": "1.13.7",
   "description": "用自由画布整理剧本、拍摄资产与镜头，配置文字模型提取资产并绑定参考图。",
   "author": "JustinQiuck",
