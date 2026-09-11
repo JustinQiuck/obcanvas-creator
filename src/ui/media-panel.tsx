@@ -32,7 +32,7 @@ function Candidate({ shot, reference: ref, media, busy, run }: { shot: FilmRecor
   return <figure data-media-id={ref.id} data-decision={decision}>
     <Preview key={key} media={media} reference={ref} onReady={() => setReadyKey(key)} onUnavailable={() => setReadyKey('')} />
     <figcaption>{ref.path}</figcaption>
-    {video && <><span className="obcanvas-decision">{decision === 'adopted' ? '已采用' : decision === 'rejected' ? '已退回' : '视频候选'}</span>
+    {video && shot.kind === 'shot' && <><span className="obcanvas-decision">{decision === 'adopted' ? '已采用' : decision === 'rejected' ? '已退回' : '视频候选'}</span>
       {ref.reason && <p className="obcanvas-hint">退回原因：{ref.reason}</p>}
       <div className="obcanvas-media-actions">
         {decision !== 'adopted' && <button disabled={busy || readyKey !== key} onClick={() => void run(() => media.decide(shot, ref.id, 'adopted'))}>采用此视频</button>}
@@ -45,7 +45,7 @@ function Candidate({ shot, reference: ref, media, busy, run }: { shot: FilmRecor
   </figure>;
 }
 
-function Preview({ media, reference, onReady, onUnavailable }: { media: VaultMedia; reference: MediaRef; onReady: () => void; onUnavailable: () => void }) {
+export function Preview({ media, reference, onReady, onUnavailable }: { media: VaultMedia; reference: MediaRef; onReady: () => void; onUnavailable: () => void }) {
   const source = media.locate(reference);
   const [error, setError] = useState('');
   const [metadata, setMetadata] = useState('尺寸与时长：未知');

@@ -1,5 +1,5 @@
 import type { Vault, TFile } from 'obsidian';
-import { FilmRecord, Draft, RecordError, ConflictError, newRecord, parseRecord, patchRecord, patchMedia, patchOrder, orderedShots, decideMedia, type MediaRef } from '../model';
+import { FilmRecord, Draft, RecordError, ConflictError, newRecord, parseRecord, patchRecord, patchMedia, patchOrder, orderedShots, decideMedia, type MediaRef, type RecordKind, type CardLink, kindLabels, patchLinks } from '../model';
 
 export const PROJECT_ROOT = '影视项目';
 export type Catalog = { records: FilmRecord[]; problems: string[]; loading: boolean };
@@ -46,8 +46,8 @@ export class VaultRecords {
     await this.refresh();
     return record;
   }
-  async create(kind: 'scene' | 'shot', sceneId?: string) {
-    if (kind === 'shot') {
+  async create(kind: RecordKind, sceneId?: string) {
+    if (kind !== 'scene') {
       const { entries } = await this.scan();
       if (!entries.some(e => e.record.id === sceneId && e.record.kind === 'scene')) throw new RecordError('所属场次不存在或无法读取。');
     }
@@ -58,7 +58,7 @@ export class VaultRecords {
       catch (error) { if (!this.vault.getAbstractFileByPath(PROJECT_ROOT)) throw error; }
     }
     const id = crypto.randomUUID();
-    const title = kind === 'scene' ? '新场次' : '新镜头';
+    const title = '新' + kindLabels[kind];
     const path = `${PROJECT_ROOT}/${title}-${id}.md`;
     const source = newRecord(kind, id, title, sceneId);
     await this.vault.create(path, source);
@@ -71,9 +71,16 @@ export class VaultRecords {
   }
   async editMedia(shotId: string, edit: (items: MediaRef[]) => MediaRef[]) {
     const { entries } = await this.scan();
-    const entry = entries.find(e => e.record.id === shotId && e.record.kind === 'shot');
+    const entry = entries.find(e => e.record.id === shotId);
     if (!entry) throw new RecordError('镜头不存在、编号重复或无法读取，未修改关联。');
     await this.vault.process(entry.file, current => patchMedia(current, shotId, edit));
+    await this.refresh();
+  }
+  async editLinks(recordId: string, edit: (links: CardLink[]) => CardLink[]) {
+    const { entries } = await this.scan();
+    const entry = entries.find(e => e.record.id === recordId);
+    if (!entry) throw new RecordError('卡片无法读取，未修改关系。');
+    await this.vault.process(entry.file, raw => patchLinks(raw, recordId, edit));
     await this.refresh();
   }
   private async appendOrder(sceneId: string, id: string) {

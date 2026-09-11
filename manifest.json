@@ -1,7 +1,7 @@
 {
   "id": "obcanvas-creator",
   "name": "影视画布",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "minAppVersion": "1.13.7",
   "description": "整理镜头顺序、规划与视频候选，在本地笔记中保留采用和退回决定。",
   "author": "JustinQiuck",

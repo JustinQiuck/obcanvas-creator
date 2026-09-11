@@ -79,7 +79,7 @@ export class VaultMedia {
       if (path !== ref.path && records.some(r => r.media?.some(m => m.id === ref.id && m.decision === 'adopted'))) throw new Error('这份视频已有镜头采用，请先取消采用，再替换文件。');
       const canonical = records.flatMap(r => r.media ?? []).find(m => m.path === path);
       // Relinking deliberately applies to every shot using this media ID.
-      for (const record of records.filter(r => r.kind === 'shot' && r.media?.some(m => m.id === ref.id))) {
+      for (const record of records.filter(r => r.media?.some(m => m.id === ref.id))) {
         await this.records.editMedia(record.id, items => {
           const current = items.find(m => m.id === ref.id);
           if (current && current.path !== ref.path && current.path !== path) throw new Error('素材关联已被修改，请载入最新记录后重试。');
@@ -94,7 +94,7 @@ export class VaultMedia {
     this.changed();
     return this.enqueue(async () => {
       await this.records.refresh();
-      for (const record of this.records.getSnapshot().records.filter(r => r.kind === 'shot' && r.media?.some(m => m.path === oldPath || m.path.startsWith(oldPath + '/')))) {
+      for (const record of this.records.getSnapshot().records.filter(r => r.media?.some(m => m.path === oldPath || m.path.startsWith(oldPath + '/')))) {
         await this.records.editMedia(record.id, items => items.map(m => m.path === oldPath || m.path.startsWith(oldPath + '/') ? { ...m, path: path + m.path.slice(oldPath.length) } : m));
       }
       this.changed();

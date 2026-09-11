@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>影视画布 · 操作预览</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<div class="preview">操作原型 · 中性示例 <span>仅供试操作，刷新后恢复示例；不会保存到 Obsidian，也不会调用 AI。</span></div>
+<header><div class="brand"><b>影视画布</b><span>／</span> 雨夜归家 <small>示例项目</small></div><div><button id="empty">空白画布</button><button id="example">查看示例</button><button id="theme" aria-label="切换明暗主题">明暗</button></div></header>
+<div class="workspace">
+  <nav class="tools" aria-label="添加到画布"><span class="caption">添加到画布</span><button data-add="script">＋ 剧本</button><button data-add="person">＋ 人物</button><button data-add="scene">＋ 场景</button><button data-add="shot">＋ 镜头</button><button data-add="frame">＋ 关键帧</button><button id="import">＋ 图片 / 视频</button><input id="files" type="file" multiple accept="image/*,video/*" hidden><div class="tools-end"><button id="todo" aria-expanded="false">查看待办</button></div></nav>
+  <main id="canvas" tabindex="0" aria-label="自由制作画布"><div id="world"><svg id="edges" aria-label="卡片关系"></svg><div id="nodes"></div></div>
+    <div id="welcome" hidden><h1>把故事放上来。</h1><p>粘贴剧本，或直接拖入人物照片、场景图和视频。<br>放好之后，再连接它们的用途。</p><button data-add="script">＋ 放入剧本</button></div>
+    <div class="canvas-bottom"><span>拖动卡片整理 · 拖动空白处平移 · 滚轮缩放 · 点击圆点连接</span><div><button id="fit">总览</button><button id="zoom-out" aria-label="缩小">−</button><output id="zoom">100%</output><button id="zoom-in" aria-label="放大">＋</button></div></div>
+  </main>
+  <aside id="inspector" hidden aria-label="卡片详情"></aside><aside id="tasks" hidden aria-label="制作待办"></aside>
+  <div id="connectbar" hidden><span id="connecttext"></span><label>用途 <select id="relation"><option>参考</option><option>剧情拆分</option><option>人物参考</option><option>场景参考</option><option>起始帧</option><option>视频候选</option><option>续接帧</option></select></label><button id="cancel">取消连接</button></div>
+</div><footer><span id="status" role="status">先点「门锁转动」镜头，看清它需要什么，再试着拖动和连接卡片。</span><span>预览编辑不会存档</span></footer>
+<script src="app.js"></script></body></html>

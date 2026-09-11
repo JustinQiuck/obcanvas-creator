@@ -63,3 +63,44 @@
 .obcanvas-root details { margin-bottom: 20px; }
 .obcanvas-root details summary { margin-bottom: 12px; cursor: pointer; }
 .obcanvas-root .obcanvas-editor-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+/* 0.3: the canvas is the workspace; editors are dismissible inspectors. */
+.obcanvas-root .obcanvas-free { height: 100%; min-height: 400px; display: flex; flex-direction: column; padding: 0; margin: 0; }
+.obcanvas-root .obcanvas-free-header { display: flex; align-items: center; gap: 12px; padding: 12px 18px; border-bottom: 1px solid var(--background-modifier-border); flex-wrap: wrap; }
+.obcanvas-root .obcanvas-free-header > strong { font-size: 17px; letter-spacing: 2px; margin-right: 10px; }
+.obcanvas-root .obcanvas-free-header > .obcanvas-hint { margin-left: auto; }
+.obcanvas-root .obcanvas-free-tools { display: flex; flex-wrap: wrap; gap: 3px; padding: 7px 12px; border-bottom: 1px solid var(--background-modifier-border); }
+.obcanvas-root .obcanvas-free-header button, .obcanvas-root .obcanvas-free-tools button { background: transparent; box-shadow: none; padding: 7px 10px; height: auto; font-size: 12px; }
+.obcanvas-root .obcanvas-free-header button:hover, .obcanvas-root .obcanvas-free-tools button:hover { background: var(--background-modifier-hover); }
+.obcanvas-root .obcanvas-free-stage { position: relative; flex: 1; min-height: 250px; }
+.obcanvas-root .obcanvas-free .obcanvas-surface { height: 100%; min-height: 250px; border: 0; border-radius: 0; }
+.obcanvas-root .obcanvas-world { top: 0; left: 0; }
+.obcanvas-root .obcanvas-free .obcanvas-board-node { height: 264px; padding: 18px; gap: 9px; }
+.obcanvas-root .obcanvas-board-node .obcanvas-node-kicker { color: var(--text-accent); opacity: 1; letter-spacing: 1px; }
+.obcanvas-root .obcanvas-node-state { border-top: 1px solid var(--obcanvas-node-border); padding-top: 9px; font-size: 11px; width: 100%; opacity: .8; }
+.obcanvas-root .obcanvas-node-image { width: 100%; height: 100px; object-fit: contain; pointer-events: none; }
+.obcanvas-root .obcanvas-node-video { font-size: 28px; display: flex; gap: 12px; align-items: center; height: 58px; }
+.obcanvas-root .obcanvas-node-video small { font-size: 12px; }
+.obcanvas-root .obcanvas-node .obcanvas-port { position: absolute; top: 110px; right: -11px; height: 22px; width: 22px; min-width: 22px; padding: 0; border: 1px solid var(--obcanvas-node-active); border-radius: 50%; background: var(--obcanvas-node-panel); color: inherit; cursor: crosshair; box-shadow: none; font-size: 13px; }
+.obcanvas-root .obcanvas-connections { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
+.obcanvas-root .obcanvas-connections path { stroke: var(--text-muted); stroke-width: 1.3; fill: none; opacity: .6; }
+.obcanvas-root .obcanvas-connections text { font-size: 12px; fill: var(--text-muted); paint-order: stroke; stroke: var(--obcanvas-node-panel); stroke-width: 5px; stroke-linejoin: round; }
+.obcanvas-root .obcanvas-inspector { position: absolute; top: 14px; right: 14px; bottom: 65px; width: 360px; max-width: calc(100% - 28px); padding: 20px; overflow: auto; z-index: 3; border-radius: 9px; box-shadow: 0 8px 28px #0003; }
+.obcanvas-root .obcanvas-inspector .obcanvas-card-heading { align-items: center; margin-bottom: 14px; }
+.obcanvas-root .obcanvas-inspector .obcanvas-card-heading h2 { margin: 0; }
+.obcanvas-root .obcanvas-inspector label { margin-bottom: 14px; }
+.obcanvas-root .obcanvas-inspector textarea { min-height: 110px; }
+.obcanvas-root .obcanvas-inspector > img, .obcanvas-root .obcanvas-inspector > video { width: 100%; max-height: 230px; object-fit: contain; }
+.obcanvas-root .obcanvas-relation { display: flex; gap: 4px; border-bottom: 1px solid var(--background-modifier-border); padding: 8px 0; }
+.obcanvas-root .obcanvas-relation button { font-size: 12px; height: auto; white-space: normal; box-shadow: none; background: transparent; }
+.obcanvas-root .obcanvas-relation button:first-child { flex: 1; justify-content: start; text-align: left; }
+.obcanvas-root .obcanvas-task { display: flex; flex-direction: column; align-items: start; width: 100%; height: auto; white-space: normal; text-align: left; padding: 14px 4px; gap: 7px; background: transparent; border-bottom: 1px solid var(--background-modifier-border); box-shadow: none; }
+.obcanvas-root .obcanvas-task span { color: var(--text-muted); font-size: 12px; }
+.obcanvas-root .obcanvas-start { position: absolute; top: 22%; left: 8%; pointer-events: none; }
+.obcanvas-root .obcanvas-start button { pointer-events: auto; margin-top: 16px; }
+.obcanvas-root .obcanvas-start h1 { font-size: 30px; font-weight: 500; letter-spacing: 2px; }
+.obcanvas-root .obcanvas-start p { line-height: 1.9; }
+.obcanvas-root .obcanvas-free-status { display: flex; gap: 12px; flex-wrap: wrap; justify-content: space-between; padding: 8px 16px; font-size: 11px; color: var(--text-muted); border-top: 1px solid var(--background-modifier-border); }
+.obcanvas-root .obcanvas-connect-bar { position: absolute; left: 20px; bottom: 75px; max-width: calc(100% - 40px); display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 12px; background: var(--background-primary); border: 1px solid var(--text-accent); border-radius: 8px; font-size: 12px; z-index: 4; }
+.obcanvas-root .obcanvas-free .obcanvas-alert { max-height: 120px; overflow: auto; flex-shrink: 0; margin: 6px 14px; font-size: 12px; }
+.obcanvas-root .obcanvas-inspector .obcanvas-order { padding: 0; background: transparent; }
+@container (max-width: 600px) { .obcanvas-root .obcanvas-free-header { gap: 5px; padding: 8px; } .obcanvas-root .obcanvas-free-header > .obcanvas-hint { display: none; } .obcanvas-root .obcanvas-free-status > span:first-child { display: none; } }

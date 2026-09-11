@@ -4,12 +4,12 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { canvasThemes, type CanvasColorTheme } from './theme';
 import type { ViewportTransform } from './types';
 
-type Props = { viewport: ViewportTransform; onViewportChange: (v: ViewportTransform) => void; children: ReactNode };
-export function InfiniteCanvas({ viewport, onViewportChange, children }: Props) {
+type Props = { viewport: ViewportTransform; onViewportChange: (v: ViewportTransform) => void; children: ReactNode; onFit?: () => void; onBlankClick?: () => void };
+export function InfiniteCanvas({ viewport, onViewportChange, children, onFit, onBlankClick }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const latest = useRef({ viewport, onViewportChange });
   latest.current = { viewport, onViewportChange };
-  const pan = useRef<{ id: number; startX: number; startY: number; initial: ViewportTransform } | null>(null);
+  const pan = useRef<{ moved?: boolean; id: number; startX: number; startY: number; initial: ViewportTransform } | null>(null);
   const [space, setSpace] = useState(false);
   const [panning, setPanning] = useState(false);
   const [tool, setTool] = useState<'select' | 'pan'>('select');
@@ -47,19 +47,20 @@ export function InfiniteCanvas({ viewport, onViewportChange, children }: Props) 
     onPointerDownCapture={e => {
       const target = e.target as Element;
       if (target.closest('[data-canvas-no-zoom]')) return;
-      if (e.button === 1 || (e.button === 0 && isPan)) {
+      if (e.button === 1 || (e.button === 0 && (isPan || !target.closest('[data-node-id]')))) {
         e.preventDefault(); e.stopPropagation(); e.currentTarget.focus(); e.currentTarget.setPointerCapture(e.pointerId);
         pan.current = { id: e.pointerId, startX: e.clientX, startY: e.clientY, initial: viewport }; setPanning(true);
       } else if (!target.closest('[data-node-id]')) e.currentTarget.focus();
     }}
-    onPointerMove={e => { const p = pan.current; if (p?.id === e.pointerId) onViewportChange({ ...p.initial, x: p.initial.x + e.clientX - p.startX, y: p.initial.y + e.clientY - p.startY }); }}
-    onPointerUp={e => { if (pan.current?.id === e.pointerId) { pan.current = null; setPanning(false); e.currentTarget.releasePointerCapture(e.pointerId); } }}
+    onPointerMove={e => { const p = pan.current; if (p?.id === e.pointerId) { if (Math.hypot(e.clientX - p.startX, e.clientY - p.startY) > 4) p.moved = true; onViewportChange({ ...p.initial, x: p.initial.x + e.clientX - p.startX, y: p.initial.y + e.clientY - p.startY }); } }}
+    onPointerUp={e => { if (pan.current?.id === e.pointerId) { if (!pan.current.moved) onBlankClick?.(); pan.current = null; setPanning(false); e.currentTarget.releasePointerCapture(e.pointerId); } }}
     onPointerCancel={() => { pan.current = null; setPanning(false); }} onLostPointerCapture={() => { pan.current = null; setPanning(false); }}>
     <div className="obcanvas-grid" style={{ backgroundImage: `linear-gradient(${theme.canvas.line} 1px, transparent 1px), linear-gradient(90deg, ${theme.canvas.line} 1px, transparent 1px)`, backgroundSize: `${gridSize}px ${gridSize}px`, backgroundPosition: `${viewport.x % gridSize}px ${viewport.y % gridSize}px` }} />
     <div className="obcanvas-world" style={{ transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.k})` }}>{children}</div>
     <div className="obcanvas-canvas-tools" data-canvas-no-zoom>
       <button aria-pressed={tool === 'select'} onClick={() => setTool('select')}>选择</button>
       <button aria-pressed={tool === 'pan'} onClick={() => setTool('pan')}>平移</button>
+      {onFit && <button onClick={onFit}>总览</button>}
       <button onClick={() => onViewportChange({ x: 32, y: 32, k: 1 })}>重置视口</button>
       <span>{Math.round(viewport.k * 100)}%</span>
     </div>

@@ -28,7 +28,7 @@ export class EditorSession {
     this.emit({ selectedId: null, base: null, draft: { title: '', body: '' }, status: 'ready', message: '' });
   }
   private reconcile() {
-    const latest = this.records.getSnapshot().records.find(r => r.id === this.state.selectedId && r.kind === 'shot');
+    const latest = this.records.getSnapshot().records.find(r => r.id === this.state.selectedId);
     if (!latest) {
       if (this.state.selectedId && !this.records.getSnapshot().loading) this.emit({ status: 'error', message: '镜头已移除或无法读取。未保存的输入会保留。' });
       return;
@@ -60,7 +60,7 @@ export class EditorSession {
   async loadLatest() {
     if (this.state.saving) return;
     await this.records.refresh();
-    const record = this.records.getSnapshot().records.find(r => r.id === this.state.selectedId && r.kind === 'shot');
+    const record = this.records.getSnapshot().records.find(r => r.id === this.state.selectedId);
     if (!record) return;
     this.emit({ base: record, draft: draftOf(record), dirty: false, status: 'ready', message: '已载入笔记版本。' });
   }
