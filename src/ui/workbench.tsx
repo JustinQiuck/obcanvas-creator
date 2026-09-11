@@ -140,7 +140,7 @@ export function Workbench({ records, editor, layout, viewports, media, openNote,
   }}>
     <header className="obcanvas-free-header"><strong>影视画布</strong><select aria-label="当前场次" value={activeScene} disabled={busy} onChange={e => { const id = e.target.value; void run(() => { setSceneId(id); editor.clearSelection(); setSelectedKey(''); setPanel(''); setSourceId(''); }); }}>
       {!scenes.length && <option value="">从剧本或素材开始</option>}{scenes.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
-    </select><button disabled={busy} onClick={() => void create('scene')}>新建场次</button><button disabled={busy || !scene} onClick={() => void run(() => { editor.select(scene!.id); setSelectedKey(`r:${scene!.id}`); setPanel('detail'); })}>场次名称</button><span className="obcanvas-hint">本地资料库 · 0.4.0</span></header>
+    </select><button disabled={busy} onClick={() => void create('scene')}>新建场次</button><button disabled={busy || !scene} onClick={() => void run(() => { editor.select(scene!.id); setSelectedKey(`r:${scene!.id}`); setPanel('detail'); })}>场次名称</button><span className="obcanvas-hint">本地资料库 · 0.4.1</span></header>
     <nav className="obcanvas-free-tools" aria-label="添加到画布">
       {(['script', 'person', 'setting', 'prop', 'shot', 'frame'] as const).map(kind => <button key={kind} disabled={busy || catalog.loading} onClick={() => void create(kind)}>＋ {kindLabels[kind]}</button>)}
       <button disabled={busy} onClick={() => input.current?.click()}>＋ 图片 / 视频</button><button disabled={busy} onClick={pickAsset}>关联库内素材</button>

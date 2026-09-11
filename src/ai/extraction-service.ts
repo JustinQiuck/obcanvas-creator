@@ -63,13 +63,15 @@ export class ExtractionService {
         const catalog = this.records.getSnapshot();
         if (catalog.problems.length) throw new Error('请先修复项目中无法读取或重复的资产记录。');
         const context = extractionContext(script, catalog.records), version = await inputVersion(script), settings = { ...this.settings() };
+        this.emit({ message: '正在整理拍摄资产，等待模型返回… 最长约 2 分钟，可取消。' });
         const raw = await this.chat.complete(settings, this.secret(), [{ role: 'system', content: this.skill.instructions }, { role: 'user', content: context }], this.controller.signal);
         if (this.controller.signal.aborted) throw new Error('已取消整理。');
-        const items = parseSuggestions(raw, script, catalog.records);
-        const task: ExtractionTask = { version: 1, id: crypto.randomUUID(), revision: 0, scriptId, sceneId: script.sceneId!, inputVersion: version, scriptText: script.body, createdAt: new Date().toISOString(), model: settings.model, skillVersion: this.skill.version, status: 'review', items };
+        this.emit({ message: '模型已返回，正在核对剧本依据并保存清单…' });
+        const { items, issues } = parseSuggestions(raw, script, catalog.records);
+        const task: ExtractionTask = { version: 1, id: crypto.randomUUID(), revision: 0, scriptId, sceneId: script.sceneId!, inputVersion: version, scriptText: script.body, createdAt: new Date().toISOString(), model: settings.model, skillVersion: this.skill.version, status: 'review', items, issues };
         this.keep(await this.storage.save(task));
         const changed = await inputVersion(await this.records.requireRecord(scriptId)) !== version;
-        this.emit({ message: changed ? '剧本已更新，清单已保留供对照；请按最新剧本重新整理。' : '资产清单已保存，请检查后确认。' });
+        this.emit({ message: changed ? '剧本已更新，清单已保留供对照；请按最新剧本重新整理。' : issues.length ? `已保留 ${items.length} 项可确认资产，另有 ${issues.length} 项未通过检查。请查看下方原因。` : '资产清单已保存，请检查后确认。' });
       } finally { this.controller = undefined; this.owner = ''; }
     });
   }
@@ -84,6 +86,7 @@ export class ExtractionService {
   async apply(base: ExtractionTask) {
     await this.guard(base.scriptId, async () => {
       if (base.status === 'complete') return;
+      if (!base.items.length) throw new Error('没有可确认的资产，请查看问题说明后重新整理。');
       let task = base;
       const verifyScript = async (): Promise<FilmRecord> => {
         const script = await this.records.requireRecord(task.scriptId);

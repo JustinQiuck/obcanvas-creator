@@ -73,11 +73,11 @@ test('资产参考用途与确认独立于导入，缺失和旧记录保持待�
 test('提取结果校验原文依据、已有身份和未知信息；同名仅作为确认建议', () => {
   const script = parseRecord(scriptRaw, '')!;
   const existing = parseRecord(newRecord('person', 'p', '小林', 'scene-b'), '')!;
-  const items = parseSuggestions(answer, script, [existing]);
+  const { items } = parseSuggestions(answer, script, [existing]);
   assert.equal(items[0]!.action, 'reuse'); assert.equal(items[0]!.targetId, 'p'); assert.deepEqual(items[0]!.unresolved, ['服装待确认']);
-  assert.throws(() => parseSuggestions(JSON.stringify({ assets: [{ ...asset, evidence: '凭空出现的句子' }] }), script, []));
-  assert.throws(() => parseSuggestions(JSON.stringify({ assets: [{ ...asset, existingId: 'missing' }] }), script, []));
-  assert.deepEqual(parseSuggestions('{"assets":[]}', script, []), []);
+  assert.match(parseSuggestions(JSON.stringify({ assets: [{ ...asset, evidence: '凭空出现的句子' }] }), script, []).issues[0]!, /第 1 项「小林」.*原文依据/);
+  assert.match(parseSuggestions(JSON.stringify({ assets: [{ ...asset, existingId: 'missing' }] }), script, []).issues[0]!, /已有资产不存在/);
+  assert.deepEqual(parseSuggestions('{"assets":[]}', script, []), { items: [], issues: [] });
 });
 test('通用接口地址与响应验证，不记录密钥或服务错误正文', async () => {
   assert.equal(chatEndpoint('https://example.com'), 'https://example.com/v1/chat/completions');
@@ -132,4 +132,42 @@ test('取消和超时忽略迟到响应，双击不发第二次请求', async ()
   await new Promise(r => setTimeout(r, 1)); assert.equal((await storage.list()).length, 0); assert.equal(count, 1); service.dispose();
   const stalled = new ChatClient(() => new Promise(() => {}));
   await assert.rejects(stalled.complete(settings, '', [], new AbortController().signal, 2), /超时/);
+});
+
+test('格式差异可兼容，原文依据仍保存为剧本中的精确片段', () => {
+  const script = parseRecord(newRecord('script', 'script', '测试', 'scene-a') + '小林推开\r\n资料室的门。', '')!;
+  const result = parseSuggestions('```JSON\n' + JSON.stringify({ assets: [{ ...asset, description: null, unresolved: null, needs: '主参考', evidence: ' 小林推开资料室的门 ' }] }) + '\n```', script, []);
+  assert.equal(result.issues.length, 0);
+  assert.equal(result.items[0]!.evidence, '小林推开\r\n资料室的门');
+  assert.equal(result.items[0]!.description, ''); assert.deepEqual(result.items[0]!.unresolved, []);
+  for (const evidence of ['小林打开资料室的门', '小林…资料室的门', '小林的门']) {
+    const rejected = parseSuggestions(JSON.stringify({ assets: [{ ...asset, evidence }] }), script, []);
+    assert.equal(rejected.items.length, 0); assert.match(rejected.issues[0]!, /不能改写、拼接或省略/);
+  }
+});
+test('单项失败保留其他结果和具体原因，重开可恢复并只应用有效项', async () => {
+  const { service, storage, vault, records } = await setup(async () => ({ status: 200, text: JSON.stringify({ choices: [{ message: { content: JSON.stringify({ assets: [asset, { ...asset, title: '雨伞', evidence: '下雨了' }, { ...asset, needs: [] }] }) } }] }) }));
+  const messages: string[] = []; service.subscribe(() => messages.push(service.getSnapshot().message));
+  await service.start('script', 'view');
+  assert.ok(messages.some(m => m.includes('等待模型返回')));
+  const task = (await storage.list())[0]!;
+  assert.equal(task.items.length, 1); assert.equal(task.issues?.length, 2);
+  assert.match(task.issues![0]!, /第 2 项「雨伞」.*原文依据/);
+  assert.match(task.issues![1]!, /第 3 项「小林」.*参考用途/);
+  assert.equal(vault.getMarkdownFiles().length, 3);
+  await service.apply(task);
+  assert.equal(vault.getMarkdownFiles().length, 4);
+  assert.equal((await records.requireRecord('script')).links!.length, 1);
+  assert.deepEqual((await storage.list())[0]!.issues, task.issues); service.dispose();
+});
+test('全部条目失败保留问题清单，阻止空清单确认且不自动重复请求', async () => {
+  let calls = 0;
+  const { service, storage, vault } = await setup(async () => { calls++; return { status: 200, text: JSON.stringify({ choices: [{ message: { content: JSON.stringify({ assets: [{ ...asset, evidence: '不存在' }] }) } }] }) }; });
+  await service.start('script', 'view'); const task = (await storage.list())[0]!;
+  assert.equal(task.items.length, 0); assert.equal(task.issues!.length, 1);
+  await assert.rejects(service.apply(task), /没有可确认的资产/);
+  assert.equal(calls, 1); assert.equal(vault.getMarkdownFiles().length, 3);
+  const legacy = { ...task }; delete legacy.issues; assert.ok(parseTask(JSON.stringify(legacy)));
+  assert.throws(() => parseTask(JSON.stringify({ ...task, issues: [null] })), /问题记录/);
+  service.dispose();
 });

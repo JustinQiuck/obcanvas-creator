@@ -26,6 +26,7 @@ try {
       const stored = await page.evaluate(() => { const p = app.plugins.plugins['obcanvas-creator']; return { ai: p.aiSettings, secret: p.getAISecret() === 'obcanvas-neutral-test-key', tasks: p.extractions.getSnapshot().tasks }; });
       assert.deepEqual(stored.ai, s.ai); assert.equal(stored.secret, true);
       assert.equal(stored.tasks.find(t => t.id === s.taskId).status, 'complete');
+      if (s.failedTask) assert.deepEqual(stored.tasks.find(t => t.id === s.failedTask.id), s.failedTask);
       for (const r of s.records) assert.deepEqual(await record(r.id), r);
       await root.getByLabel('当前场次', { exact: true }).selectOption(s.secondScene); await idle();
       assert.equal(await root.locator(`[data-node-id="r:${s.person}"]`).count(), 1);
@@ -50,6 +51,12 @@ try {
       const body = JSON.parse(Buffer.concat(chunks).toString()); calls.push({ url: req.url, body, authorized: req.headers.authorization === 'Bearer obcanvas-neutral-test-key' });
       if (mode === 'unauthorized') { res.writeHead(401); res.end('{"error":"synthetic failure"}'); return; }
       const isAnalysis = body.messages.some(m => m.role === 'system');
+      if (mode === 'mixed' || mode === 'invalid') {
+        await new Promise(r => setTimeout(r, 500));
+        const valid = { kind: 'person', title: '小林', description: null, evidence: ' 小林 ', unresolved: null, needs: '主参考' };
+        const invalid = { ...valid, title: '雨伞', evidence: '下雨了' };
+        res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ assets: mode === 'mixed' ? [valid, invalid] : [invalid] }) } }] })); return;
+      }
       const content = isAnalysis ? JSON.stringify({ assets: [
         { kind: 'person', title: '小林', description: '', evidence: '小林推开资料室的门', unresolved: [], needs: ['主参考'], existingId: personId },
         { kind: 'setting', title: '资料室', description: '有门和桌子。', evidence: '资料室的门', unresolved: ['空间布局待确认'], needs: ['空间全景'], existingId: '' },
@@ -129,6 +136,28 @@ try {
       mode = 'unauthorized'; await choose(s.script2); await btn('整理拍摄资产').click();
       await root.getByText('密钥无效或已过期。', { exact: true }).waitFor(); await idle();
       assert.equal(await page.evaluate(id => app.plugins.plugins['obcanvas-creator'].extractions.getSnapshot().tasks.some(t => t.scriptId === id), s.script2), false); await close();
+    });
+    await check('点击即显示等待状态，单条依据失败仍保留有效资产并显示具体原因', async () => {
+      mode = 'mixed'; await choose(s.script2);
+      const count = await page.evaluate(() => app.plugins.plugins['obcanvas-creator'].records.getSnapshot().records.length);
+      await btn('整理拍摄资产').click();
+      await root.getByText('正在整理拍摄资产，等待模型返回… 最长约 2 分钟，可取消。', { exact: true }).waitFor();
+      assert.equal(await btn('正在处理…').isDisabled(), true);
+      await root.getByText('第 2 项「雨伞」：原文依据在剧本中找不到；需要连续原句，不能改写、拼接或省略。', { exact: true }).waitFor(); await idle();
+      assert.equal(await root.getByLabel('资产名称', { exact: true }).count(), 1);
+      assert.equal(await btn('确认并生成资产卡').isEnabled(), true);
+      assert.equal(await page.evaluate(() => app.plugins.plugins['obcanvas-creator'].records.getSnapshot().records.length), count);
+    });
+    await check('全部依据失败时显示原因并禁用确认，问题清单在重新打开后仍可查看', async () => {
+      mode = 'invalid'; const callCount = calls.length;
+      await btn('按当前剧本重新整理').click();
+      await root.getByText('本次没有通过检查的资产，尚未创建任何卡片。', { exact: true }).waitFor(); await idle();
+      assert.equal(await btn('确认并生成资产卡').isDisabled(), true);
+      assert.equal(calls.length, callCount + 1);
+      await close(); await choose(s.script2);
+      await root.getByText('第 1 项「雨伞」：原文依据在剧本中找不到；需要连续原句，不能改写、拼接或省略。', { exact: true }).waitFor();
+      s.failedTask = await page.evaluate(id => app.plugins.plugins['obcanvas-creator'].extractions.getSnapshot().tasks.find(t => t.scriptId === id), s.script2);
+      await close();
     });
     await check('测试前的所有项目笔记与采用记录逐字保持原样', async () => {
       for (const [path, raw] of before.notes) assert.equal(await readFile(resolve(vault, path), 'utf8'), raw);

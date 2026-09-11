@@ -16,13 +16,14 @@ export function ExtractionPanel({ script, records, service, start, apply, openAs
   }
   return <section className="obcanvas-extraction" aria-label="拍摄资产清单">
     <h3>拍摄资产</h3><p className="obcanvas-hint">整理将发送当前剧本与项目已有资产的文字摘要给你配置的模型。图片留在本地。</p>
-    <button className="mod-cta" disabled={state.busy} onClick={start}>{task ? '按当前剧本重新整理' : '整理拍摄资产'}</button>
+    <button className="mod-cta" disabled={state.busy} onClick={start}>{state.busy && state.scriptId === script.id ? '正在处理…' : task ? '按当前剧本重新整理' : '整理拍摄资产'}</button>
     {state.busy && <button onClick={() => service.cancel()}>取消分析</button>}
-    {state.message && <p role="status">{state.message}</p>}{error && <p role="alert">{error}</p>}
+    {state.message && (!state.scriptId || state.scriptId === script.id) && <p role="status">{state.message}</p>}{error && <p role="alert">{error}</p>}
     {task && <>
       <p className="obcanvas-hint">{task.status === 'complete' ? '这次清单已确认。资产卡可以继续绑定图片。' : '先核对名称、原文依据和复用建议。修改自动保存，确认后才创建卡片。'} · {task.items.length} 项</p>
       {stale && <p role="alert">剧本已更新；此清单仅供对照，请按当前剧本重新整理。</p>}
-      {!task.items.length && <p>本次未提取到需要准备的资产。</p>}
+      {!!task.issues?.length && <div role="alert"><p>以下 {task.issues.length} 项未进入确认清单：</p><ul>{task.issues.map((issue, index) => <li key={index}>{issue}</li>)}</ul><p>{task.items.length > 0 ? '可以先确认下方可用项。' : ''}重新整理会再次请求模型，请先根据原因检查剧本或模型设置。</p></div>}
+      {!task.items.length && <p>{task.issues?.length ? '本次没有通过检查的资产，尚未创建任何卡片。' : '本次未提取到需要准备的资产。'}</p>}
       {task.status === 'complete' && task.items.filter(i => i.action !== 'ignore').map(i => <button className="obcanvas-task" key={i.id} onClick={() => openAsset(i.targetId)}>绑定参考图 · {records.find(r => r.id === i.targetId)?.title ?? i.title}</button>)}
       {task.items.map(item => <fieldset className="obcanvas-asset-item" key={item.id} disabled={state.busy || task.status !== 'review' || stale}>
         <legend>{kindLabels[item.kind]}{item.applied ? ' · 已处理' : ''}</legend>
@@ -40,7 +41,7 @@ export function ExtractionPanel({ script, records, service, start, apply, openAs
         }}><option value="">选择合并目标…</option>{task.items.filter(i => i.id !== item.id && i.kind === item.kind && i.action !== 'ignore').map(i => <option key={i.id} value={i.id}>{i.title}</option>)}</select></label>}
       </fieldset>)}
       <button disabled={state.busy || !service.hasDrafts()} onClick={() => void service.flushDrafts().catch(e => setError((e as Error).message))}>保存清单修改</button>
-      <button className="mod-cta" disabled={state.busy || stale || task.status === 'complete'} onClick={apply}>{task.status === 'partial' || task.status === 'applying' ? '继续保存未完成项' : '确认并生成资产卡'}</button>
+      <button className="mod-cta" disabled={state.busy || stale || !task.items.length || task.status === 'complete'} onClick={apply}>{task.status === 'partial' || task.status === 'applying' ? '继续保存未完成项' : '确认并生成资产卡'}</button>
     </>}
   </section>;
 }
