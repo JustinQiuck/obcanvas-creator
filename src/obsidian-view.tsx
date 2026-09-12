@@ -27,7 +27,7 @@ export class FilmView extends ItemView {
       this.app.workspace.requestSaveLayout();
     });
     this.root = createRoot(this.contentEl);
-    this.root.render(<LibraryWorkspace navigation={this.libraryNavigation} skills={this.plugin.skills} records={this.plugin.records} layout={this.plugin.layout} viewports={this.viewports} media={this.plugin.media} editor={this.editor} extractions={this.plugin.extractions} storyboards={this.plugin.storyboards} owner={this.sessionId} openNote={async path => { await this.app.workspace.openLinkText(path, '', 'split'); }} />);
+    this.root.render(<LibraryWorkspace models={this.plugin.models} navigation={this.libraryNavigation} skills={this.plugin.skills} records={this.plugin.records} layout={this.plugin.layout} viewports={this.viewports} media={this.plugin.media} editor={this.editor} extractions={this.plugin.extractions} storyboards={this.plugin.storyboards} owner={this.sessionId} openNote={async path => { await this.app.workspace.openLinkText(path, '', 'split'); }} />);
   }
   getState() { return { shotId: this.editor?.getSnapshot().selectedId, viewports: this.viewports.getSnapshot(), library: this.libraryNavigation.getSnapshot() }; }
   async setState(state: { shotId?: string; viewports?: unknown; library?: unknown }, result: ViewStateResult) {

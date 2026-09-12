@@ -13,7 +13,7 @@ export class StoryboardService {
   private drafts = new Map<string, { base: StoryboardTask; next: StoryboardTask }>();
   private saving?: Promise<void>;
   private timer?: ReturnType<typeof setTimeout>;
-  constructor(private records: VaultRecords, private storage: VaultStoryboards, private chat: ChatClient, private settings: () => AISettings, private secret: () => string, private skill: StoryboardSkill) {}
+  constructor(private records: VaultRecords, private storage: VaultStoryboards, private chat: ChatClient, private settings: () => AISettings, private secret: (settings: AISettings) => string, private skill: StoryboardSkill) {}
   getSnapshot = () => this.snapshot;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private emit(patch: Partial<typeof this.snapshot>) { if (this.disposed) return; this.snapshot = { ...this.snapshot, ...patch }; this.listeners.forEach(listener => listener()); }
@@ -54,13 +54,14 @@ export class StoryboardService {
     this.owner = owner; this.controller = new AbortController();
     const skill = structuredClone(this.skill), prompt = storyboardPrompt(skill);
     try {
+      const settings = { ...this.settings() }, secret = this.secret(settings);
       const script = await this.records.requireRecord(scriptId);
       await this.records.refresh();
       const catalog = this.records.getSnapshot();
       if (catalog.problems.length) throw new Error('请先修复项目中无法读取或重复的记录。');
-      const context = storyboardContext(script, catalog.records), version = await storyboardInputVersion(script, catalog.records), settings = { ...this.settings() };
+      const context = storyboardContext(script, catalog.records), version = await storyboardInputVersion(script, catalog.records);
       this.emit({ message: '正在设计分镜与起始关键帧，等待模型返回… 最长约 2 分钟，可取消。' });
-      const raw = await this.chat.complete(settings, this.secret(), [{ role: 'system', content: prompt }, { role: 'user', content: context }], this.controller.signal);
+      const raw = await this.chat.complete(settings, secret, [{ role: 'system', content: prompt }, { role: 'user', content: context }], this.controller.signal);
       if (this.controller.signal.aborted) throw new Error('已取消分镜设计。');
       this.emit({ message: '模型已返回，正在核对原文依据并保存预览…' });
       const { items, issues } = parseStoryboardSuggestions(raw, script);

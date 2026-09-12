@@ -14,7 +14,7 @@ export class ExtractionService {
   private drafts = new Map<string, { base: ExtractionTask; next: ExtractionTask }>();
   private saving?: Promise<void>;
   private timer?: ReturnType<typeof setTimeout>;
-  constructor(private records: VaultRecords, private storage: VaultExtractions, private chat: ChatClient, private settings: () => AISettings, private secret: () => string, private skill: { version: string; instructions: string }) {}
+  constructor(private records: VaultRecords, private storage: VaultExtractions, private chat: ChatClient, private settings: () => AISettings, private secret: (settings: AISettings) => string, private skill: { version: string; instructions: string }) {}
   getSnapshot = () => this.snapshot;
   subscribe = (fn: () => void) => { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; };
   private emit(patch: Partial<typeof this.snapshot>) { if (this.disposed) return; this.snapshot = { ...this.snapshot, ...patch }; this.listeners.forEach(fn => fn()); }
@@ -61,13 +61,14 @@ export class ExtractionService {
     return this.guard(scriptId, async () => {
       this.owner = owner; this.controller = new AbortController();
       try {
+        const settings = { ...this.settings() }, secret = this.secret(settings);
         const script = await this.records.requireRecord(scriptId);
         await this.records.refresh();
         const catalog = this.records.getSnapshot();
         if (catalog.problems.length) throw new Error('请先修复项目中无法读取或重复的资产记录。');
-        const context = extractionContext(script, catalog.records), version = await inputVersion(script), settings = { ...this.settings() };
+        const context = extractionContext(script, catalog.records), version = await inputVersion(script);
         this.emit({ message: '正在整理拍摄资产，等待模型返回… 最长约 2 分钟，可取消。' });
-        const raw = await this.chat.complete(settings, this.secret(), [{ role: 'system', content: prompt }, { role: 'user', content: context }], this.controller.signal);
+        const raw = await this.chat.complete(settings, secret, [{ role: 'system', content: prompt }, { role: 'user', content: context }], this.controller.signal);
         if (this.controller.signal.aborted) throw new Error('已取消整理。');
         this.emit({ message: '模型已返回，正在核对剧本依据并保存清单…' });
         const { items, issues } = parseSuggestions(raw, script, catalog.records);

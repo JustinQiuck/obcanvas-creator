@@ -3,6 +3,8 @@ import { filmProjects, projectOf, projectRecords, isProductionAsset, isVideoPath
 import { librarySections, type LibraryNavigation, type LibrarySection } from '../library-navigation';
 import { errorMessage, type ProjectDeletion } from '../storage/vault-records';
 import { DeleteProjectDialog } from './delete-project-dialog';
+import { ModelSelector } from './model-selector';
+import type { ModelProfiles } from '../ai/model-profiles';
 import { Workbench } from './workbench';
 import { RecordInspector } from './record-inspector';
 import { AssetPreparation } from './asset-preparation';
@@ -10,7 +12,7 @@ import { ExtractionPanel } from './extraction-panel';
 import { StoryboardPanel } from './storyboard-panel';
 import { DeleteCardDialog } from './delete-card-dialog';
 
-type Props = Omit<ComponentProps<typeof Workbench>, 'projectId' | 'openSection'> & { navigation: LibraryNavigation };
+type Props = Omit<ComponentProps<typeof Workbench>, 'projectId' | 'openSection'> & { navigation: LibraryNavigation; models: ModelProfiles };
 export function LibraryWorkspace(props: Props) {
   const { records, editor, skills, extractions, storyboards, media, navigation, owner, openNote } = props;
   const catalog = useSyncExternalStore(records.subscribe, records.getSnapshot);
@@ -65,7 +67,8 @@ export function LibraryWorkspace(props: Props) {
   const header = <header className="obcanvas-library-header">
     {project ? <><button disabled={disabled || aiBusy} onClick={() => void run(() => { navigation.update({ projectId: '' }); editor.clearSelection(); setProjectName(''); })}>← 剧本项目库</button><div><h1>{project.title}</h1><p>这个项目的剧本、人物、场景、道具和制作结果，都在这里。</p></div><button disabled={disabled} onClick={() => { setProjectName(project.title); setRenaming(!renaming); }}>修改项目名称</button></> : <div><h1>剧本项目库</h1><p>一部影片，一个项目。进入项目后统一管理剧本和全部拍摄资产。</p></div>}
     {project && <button disabled={disabled || aiBusy} onClick={() => void run(async () => setDeletingProject(await records.prepareProjectDeletion(project.id)))}>删除项目</button>}
-    <small>本地资料库 · 0.7.2</small>
+    <ModelSelector models={props.models} blocked={disabled || aiBusy} />
+    <small>本地资料库 · 0.8.0</small>
   </header>;
   const problem = (error || catalog.problems.length > 0) && <div role="alert" className="obcanvas-alert">{error}{catalog.problems.map(p => <p key={p}>{p}</p>)}<button onClick={() => { setError(''); void records.refresh(); }}>重新读取</button></div>;
   const projectDialog = deletingProject && <DeleteProjectDialog plan={deletingProject} busy={busy} error={error} cancel={() => { setDeletingProject(null); setError(''); }} confirm={() => void run(async () => { if (extractions.getSnapshot().busy || storyboards.getSnapshot().busy) throw new Error('请先等待 AI 任务结束或取消。'); await records.trashProject(deletingProject); editor.clearSelection(); setDeletingProject(null); navigation.update({ projectId: '', section: 'scripts', scriptId: '' }); setProjectName(''); })} />;

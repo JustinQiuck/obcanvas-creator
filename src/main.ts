@@ -13,14 +13,17 @@ import { AISettingsTab } from './ui/ai-settings';
 import { StoryboardService } from './ai/storyboard-service';
 import { storyboardSkill } from './ai/storyboard-skills';
 import { STORYBOARDS_ROOT, VaultStoryboards } from './storage/vault-storyboards';
+import { ModelProfiles, readModelConfig, legacyProfileId, type ModelConfig, type ModelProfile } from './ai/model-profiles';
 
 export default class ObCanvasPlugin extends Plugin {
   records!: VaultRecords;
   layout!: VaultLayout;
   media!: VaultMedia;
-  aiSettings = { ...defaultAISettings };
+  models!: ModelProfiles;
+  get aiSettings() { return this.models?.selected() ?? { ...defaultAISettings }; }
   private savedExtras: Record<string, unknown> = {};
-  private sessionSecret = '';
+  private sessionSecrets = new Map<string, string>();
+  private savingModel = false;
   chat = new ChatClient(async request => { const r = await requestUrl({ ...request, throw: false }); return { status: r.status, text: r.text }; });
   extractions!: ExtractionService;
   storyboards!: StoryboardService;
@@ -35,18 +38,18 @@ export default class ObCanvasPlugin extends Plugin {
     if (saved != null) {
       if (typeof saved !== 'object' || !('version' in saved) || saved.version !== 1 || !('drafts' in saved) || !Array.isArray(saved.drafts)) throw new Error('草稿备份格式无法识别，已保留原文件，请先检查插件 data.json。');
       this.savedExtras = { ...saved };
-      this.aiSettings = readAISettings('ai' in saved ? saved.ai : undefined);
       for (const entry of saved.drafts) {
         if (!entry || typeof entry.id !== 'string' || !isRecovery(entry.recovery) || this.drafts.has(entry.id)) throw new Error('草稿备份存在无效或重复记录，已保留原文件。');
         this.drafts.set(entry.id, entry.recovery);
       }
     }
+    this.models = new ModelProfiles(readModelConfig(this.savedExtras.models, this.savedExtras.ai), next => this.flushDrafts(next));
     this.skills = new VaultSkills(this.app.vault, builtinAssetSkills);
     this.records = new VaultRecords(this.app.vault);
     this.layout = new VaultLayout(this.app.vault);
     this.media = new VaultMedia(this.app, this.records);
-    this.extractions = new ExtractionService(this.records, new VaultExtractions(this.app.vault), this.chat, () => this.aiSettings, () => this.getAISecret(), assetSkill);
-    this.storyboards = new StoryboardService(this.records, new VaultStoryboards(this.app.vault), this.chat, () => this.aiSettings, () => this.getAISecret(), storyboardSkill);
+    this.extractions = new ExtractionService(this.records, new VaultExtractions(this.app.vault), this.chat, () => this.aiSettings, settings => this.getAISecret('id' in settings ? String(settings.id) : undefined), assetSkill);
+    this.storyboards = new StoryboardService(this.records, new VaultStoryboards(this.app.vault), this.chat, () => this.aiSettings, settings => this.getAISecret('id' in settings ? String(settings.id) : undefined), storyboardSkill);
     this.addSettingTab(new AISettingsTab(this.app, this));
     this.ready = true;
     this.registerView(VIEW_TYPE, leaf => new FilmView(leaf, this));
@@ -99,21 +102,31 @@ export default class ObCanvasPlugin extends Plugin {
     clearTimeout(this.timer);
     this.timer = setTimeout(() => { void this.flushDrafts().catch(() => {}); }, 150);
   }
-  async flushDrafts() {
+  async flushDrafts(models?: ModelConfig) {
     clearTimeout(this.timer);
     this.timer = undefined;
-    const payload = { ...this.savedExtras, version: 1, ai: { ...this.aiSettings }, drafts: [...this.drafts].map(([id, recovery]) => ({ id, recovery })) };
-    this.writing = this.writing.catch(() => {}).then(() => this.saveData(payload));
+    const drafts = [...this.drafts].map(([id, recovery]) => ({ id, recovery }));
+    this.writing = this.writing.catch(() => {}).then(async () => {
+      const config = models ?? (this.savedExtras.models as ModelConfig | undefined) ?? this.models.getSnapshot();
+      await this.saveData({ ...this.savedExtras, version: 1, models: config, ai: readAISettings(config.profiles.find(p => p.id === config.selectedId)), drafts });
+      this.savedExtras.models = config;
+    });
     try { await this.writing; }
     catch (error) { new Notice(`草稿备份失败：${errorMessage(error)}。请保留当前输入并重试保存。`); throw error; }
   }
-  getAISecret() { return this.app.secretStorage?.getSecret('obcanvas-creator-text-model') ?? this.sessionSecret; }
+  getAISecret(id = this.models.getSnapshot().selectedId) { return this.app.secretStorage?.getSecret(this.secretName(id)) ?? this.sessionSecrets.get(id) ?? ''; }
+  private secretName(id: string) { return id === legacyProfileId ? 'obcanvas-creator-text-model' : `obcanvas-creator-text-model-${id}`; }
+  async saveModelProfile(profile: ModelProfile, key?: string) {
+    if (this.savingModel) throw new Error('模型配置正在保存，请稍后重试。');
+    this.savingModel = true;
+    const previous = this.getAISecret(profile.id);
+    const set = (value: string) => { if (this.app.secretStorage) this.app.secretStorage.setSecret(this.secretName(profile.id), value); else this.sessionSecrets.set(profile.id, value); };
+    try { if (key !== undefined) set(key); await this.models.save(profile); }
+    catch (error) { if (key !== undefined) set(previous); throw error; }
+    finally { this.savingModel = false; }
+  }
   async saveAISettings(settings: AISettings, key?: string) {
-    if (key !== undefined) {
-      if (this.app.secretStorage) this.app.secretStorage.setSecret('obcanvas-creator-text-model', key);
-      else this.sessionSecret = key;
-    }
-    this.aiSettings = readAISettings(settings); await this.flushDrafts();
+    await this.saveModelProfile({ ...readAISettings(settings), id: this.models.selected()?.id ?? legacyProfileId, name: this.models.selected()?.name ?? '原有模型配置' }, key);
   }
   onunload() {
     if (!this.ready) return;
