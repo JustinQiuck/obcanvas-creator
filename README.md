@@ -4,7 +4,9 @@
 
 面向 AI 影片制作的全中文工作台：结合现有画布的可视化操作与 Obsidian 的本地项目文件，管理剧本、分镜、参考图、视频候选和关键帧。
 
-**当前版本：0.5.0，已更新到当前 Obsidian 资料库。支持按剧本选择资产整理 Skill、项目默认规则、自定义编辑与 Markdown 导入导出，保留历史规则快照；通用模型、资产绑定和卡片删除功能继续可用。隔离 Obsidian 模拟接口和重启检查通过；真实模型判断质量仍需实测。AI 分镜、节奏设计、资产提示词、视频截图和制作包尚未实现。**
+**当前版本：0.6.0，已更新到当前使用的 Obsidian 资料库。新增“分镜与关键帧 · 试点”：读取当前剧本和已关联拍摄资产的文字信息，输出可回查、可编辑的拍摄理由、景别机位、起点、动作、终点、声音与静态起始关键帧提示词。预览独立保存，不创建正式镜头卡。隔离 Obsidian 的生成、编辑、取消和重启恢复已通过；真实模型的分镜质量仍需实测。**
+
+后续接入规划见 [Drama Skills 价值评估与实施计划](docs/drama-skills-integration-plan.md)：DS01 工程预览已经实现，下一步先用同一真实模型做基线对照，确认景别理由和关键帧确实减少人工修改，再决定是否进入正式镜头卡。
 
 本地开发根目录：`/Users/aliceboy/项目文件/闲来无事/obcanvas-creator`。后续源码、开发记录及从原画布复用的文件统一放在本仓库，复制后以本仓库版本为准。
 
@@ -35,7 +37,7 @@ npm run launch:test-vault
 
 测试启动脚本当前支持 macOS，使用 `.local/test-vault/` 和独立应用配置。打开后从侧栏“影视画布”进入，创建场次与镜头，保存后点击“打开对应笔记”查看双向更新。用 `npm run stop:test-vault` 停止独立测试实例。
 
-插件安装文件是构建后的 `main.js`、`styles.css`、`manifest.json` 和 `licenses/infinite-canvas-MIT.txt`，最低 Obsidian 版本为 1.13.7。实机验证见 [P0-A](docs/validation/p0-a.md)、[P0-B 画布](docs/validation/p0-b.md) 和 [P0-C 素材](docs/validation/p0-c.md)。
+插件安装文件是构建后的 `main.js`、`styles.css`、`manifest.json`、`licenses/infinite-canvas-MIT.txt` 和 `licenses/drama-skills-MIT.txt`，最低 Obsidian 版本为 1.13.7。实机验证见 [P0-A](docs/validation/p0-a.md)、[P0-B 画布](docs/validation/p0-b.md)、[P0-C 素材](docs/validation/p0-c.md) 和 [DS01 分镜预览](docs/validation/storyboard-ds01.md)。
 
 ## 自由画布基本操作
 
@@ -75,6 +77,16 @@ npm run launch:test-vault
 
 测试：`npm run test:skills`；完整重启后 `npm run test:skills:reopen`。见 [阶段计划](docs/skill-selection-plan.md) 和 [验收记录](docs/validation/skills.md)。
 
+## 0.6.0：分镜与关键帧试点
+
+1. 先在剧本卡完成资产整理，或用“关联已有拍摄资产”连接人物、场景和道具。没有资产也可生成结构预览，缺少的外观与空间事实应保留为 `TBD`。
+2. 在同一剧本卡点击“生成分镜预览”。模型只收到剧本、关联资产的文字说明、待确认信息及已确认参考图的用途，不收到图片或本地路径。
+3. 逐镜检查“为什么拍这一镜”。景别与机位必须服务具体信息，例如建立空间、读清手部证据、保留反应或延迟揭示，不能只写“更有电影感”。
+4. 检查起点、动作和终点没有互相提前；静态起始关键帧提示词只能描述开拍瞬间。修改会自动保存，也可点击“保存分镜预览修改”。
+5. 当前结果只保存在 `影视项目/分镜设计/`，不会生成镜头卡，也不会改动已有资产、视频、采用决定或画布布局。
+
+工程测试：`npm run test:storyboard`；完整重启后执行 `npm run test:storyboard:reopen`。这两项使用本机模拟文字接口，不产生真实模型费用。真实模型的基线对照尚未完成，见 [DS01 验收记录](docs/validation/storyboard-ds01.md)。
+
 ## 已验证的选片循环
 
 [P1 验收](docs/validation/p1.md) 已通过以下“一场戏、三个镜头”循环：
@@ -84,7 +96,7 @@ npm run launch:test-vault
 3. 镜头 C 的候选被退回，显示待重做。
 4. 关闭重开后，顺序、素材关联和采用决定仍然正确。
 
-[AI 助手与资产准备](docs/agent-assets-plan.md) 已实现，验证范围见 [0.4.0 验收](docs/validation/a-assets.md)。分镜辅助、制作包与截图依赖仍待实施。
+[AI 助手与资产准备](docs/agent-assets-plan.md) 已实现，验证范围见 [0.4.0 验收](docs/validation/a-assets.md)。分镜预览已进入 DS01 工程试点；正式入卡、制作包与截图依赖仍待实施。
 
 ## 项目文档
 

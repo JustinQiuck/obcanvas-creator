@@ -22,3 +22,17 @@
 本次在本仓库独立编写模型适配器、任务执行与确认流程、资产引用和内置 `production-asset-extractor` Skill。仅借鉴按任务加载 Skill 与受控项目读写的结构，没有复制 huobao-drama 的 Skill 正文、Agent 框架或业务实现，也没有新增对原画布目录的运行依赖。既有画布来源与 MIT 署名继续保留。
 
 0.5.0 的 `mv-asset-extractor` 及可选 Skill 的配置、导入导出与执行逻辑均在本仓库独立编写。未复制外部 MV／导演 Skill，不导入全局技能目录；保留既有画布 MIT 署名。
+
+## 0.6.0 Drama Skills 分镜方法适配
+
+来源仓库：https://github.com/zenstory-ai/drama-skills.git 。固定提交 `4c40ca6101648579b2455d0c0d890ce701f05173`，MIT License。运行时不读取上游目录、不执行 Python、命令或网页工具；只打包已审阅并改写为当前文字接口的规则。原文文件及适配前 SHA-256：
+
+| 上游文件 | 上游 SHA-256 | 本地用途 |
+| --- | --- | --- |
+| `skills/short-drama-storyboard/SKILL.md` | `f893fb81cb45f02affd985fcb225cfa7a261f3020c33c4de4ce48c5669299944` | 阶段边界、来源回查、分镜与关键帧职责 |
+| `skills/short-drama-storyboard/references/shot-craft.md` | `19f33418eb236fc9a2c0c650fcce1d46b2682ce49b03e7e4891a3f1c740bfe55` | 镜头目的、景别尺度、机位动机、起止状态与切镜依据 |
+| `skills/short-drama-storyboard/references/keyframe-craft.md` | `02c095439f73211817a3f75ae2af264459356060755eecaf51ce11c1512ce2ca` | 静态起始关键帧、空间朝向、手部持物和动作结果排除 |
+| `skills/short-drama-storyboard/references/scene-visual-plan.md` | `404b7634d0947335d69f0ee93b7df11aab530865c66c97d9510f58d5423377c6` | 观众立场、空间压力、揭示时机和声音策略 |
+| `LICENSE` | `840bdb5ba503ca4397f5a6049e6e8da182330f83bb70006d5656d7dd00674e9b` | 原样保存到 `licenses/drama-skills-MIT.txt` |
+
+本地 `skills/drama-storyboard/SKILL.md` 是 5,281 字节的中文适配包，SHA-256 为 `f8b63f375a078fa4becd488d1e94becd34e3183b6809daa69a38ed236760e02a`。它删除上游文件路径、ID、Agent 工具和多文件交付假设，补入当前产品的 JSON 输入、独立预览、交叉剪辑、成年亲密叙事的画外克制表达及 `TBD` 规则；宿主在 `src/ai/storyboard-skill.ts` 追加固定输出协议。构建产物同时内嵌 Drama Skills MIT 文本，并随安装包复制独立许可文件。

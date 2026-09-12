@@ -38,6 +38,7 @@ try {
       await root.getByRole('heading', { name: '绑定参考图', exact: true }).waitFor();
     });
   } else {
+    await page.evaluate(() => app.plugins.plugins['obcanvas-creator'].skills.choose('production-asset-extractor'));
     const before = await page.evaluate(async () => { const p = app.plugins.plugins['obcanvas-creator']; return { notes: await Promise.all(p.records.getSnapshot().records.map(async r => [r.path, await app.vault.read(app.vault.getFileByPath(r.path))])), drafts: (await p.loadData()).drafts }; });
     const s = await page.evaluate(async () => {
       const p = app.plugins.plugins['obcanvas-creator'];

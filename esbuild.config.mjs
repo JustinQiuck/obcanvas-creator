@@ -6,6 +6,6 @@ await build({
   jsx: 'automatic', define: { 'process.env.NODE_ENV': '"production"' },
   loader: { '.md': 'text' },
   minify: true, sourcemap: 'external', logLevel: 'info',
-  banner: { js: `/*! Upstream infinite-canvas license:\n${await readFile('licenses/infinite-canvas-MIT.txt', 'utf8')}*/` },
+  banner: { js: `/*! Upstream infinite-canvas license:\n${await readFile('licenses/infinite-canvas-MIT.txt', 'utf8')}\nAdapted drama-skills license:\n${await readFile('licenses/drama-skills-MIT.txt', 'utf8')}*/` },
 });
 await copyFile('src/styles.css', 'styles.css');
