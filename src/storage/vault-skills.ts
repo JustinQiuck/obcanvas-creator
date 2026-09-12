@@ -31,13 +31,13 @@ export class VaultSkills {
       this.emit({ config, skills: [...this.builtins, ...config.custom], loading: false, error: '' });
     } catch (e) { if (revision === this.revision) this.emit({ loading: false, error: errorMessage(e) }); }
   }
-  choice(scriptId?: string) {
+  choice(scriptId?: string, projectId?: string) {
     const { config } = this.snapshot;
-    return scriptId && Object.hasOwn(config.scripts, scriptId) ? config.scripts[scriptId]! : config.defaultAssetSkillId;
+    return scriptId && Object.hasOwn(config.scripts, scriptId) ? config.scripts[scriptId]! : projectId && config.projects && Object.hasOwn(config.projects, projectId) ? config.projects[projectId]! : config.defaultAssetSkillId;
   }
-  resolve(scriptId?: string) {
+  resolve(scriptId?: string, projectId?: string) {
     if (this.snapshot.loading || this.snapshot.busy || this.snapshot.error) throw new Error(this.snapshot.error || 'Skill 配置正在读取或保存，请稍后重试。');
-    const skill = this.snapshot.skills.find(s => s.id === this.choice(scriptId));
+    const skill = this.snapshot.skills.find(s => s.id === this.choice(scriptId, projectId));
     if (!skill) throw new Error('所选 Skill 已不存在，请重新选择；没有自动替换为其他规则。');
     return structuredClone(skill);
   }
@@ -63,14 +63,15 @@ export class VaultSkills {
     } catch (e) { this.emit({ error: errorMessage(e) }); throw e; }
     finally { this.emit({ busy: false }); }
   }
-  async choose(id: string, scriptId?: string) {
+  async choose(id: string, scriptId?: string, projectId?: string) {
     if (id && !this.snapshot.skills.some(s => s.id === id)) throw new Error('Skill 不存在，请重新选择。');
     if (!id && !scriptId) throw new Error('请选择项目默认 Skill。');
     await this.save(config => {
       if (scriptId) {
         if (id) Object.defineProperty(config.scripts, scriptId, { value: id, enumerable: true, writable: true, configurable: true });
         else delete config.scripts[scriptId];
-      } else config.defaultAssetSkillId = id;
+      } else if (projectId) config.projects = { ...config.projects, [projectId]: id };
+      else config.defaultAssetSkillId = id;
       return config;
     });
   }

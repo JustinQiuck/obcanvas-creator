@@ -1,6 +1,6 @@
 import type { Vault, TFile } from 'obsidian';
 import { FilmRecord, Draft, RecordError, ConflictError, newRecord, parseRecord, patchRecord, patchMedia, patchOrder, orderedShots, decideMedia, type MediaRef, type RecordKind, type CardLink, kindLabels, patchLinks } from '../model';
-import { isProductionAsset, patchAssetDetails, type AssetDetails } from '../model';
+import { isProductionAsset, patchAssetDetails, type AssetDetails, projectOf, LEGACY_PROJECT_ID } from '../model';
 import type { AssetItem } from '../ai/extraction-model';
 
 export const PROJECT_ROOT = '影视项目';
@@ -23,6 +23,12 @@ export class VaultRecords {
       catch (error) { problems.push(`${file.path}：${errorMessage(error)}`); }
     }
     const counts = new Map<string, number>();
+    for (const { record } of entries) {
+      if (record.kind === 'project') continue;
+      const parent = entries.find(e => e.record.id === record.sceneId && e.record.kind === 'scene')?.record;
+      if (record.projectId && record.projectId !== LEGACY_PROJECT_ID && !entries.some(e => e.record.kind === 'project' && e.record.id === record.projectId)) problems.push(`${record.path}：所属剧本项目缺失，请恢复项目笔记。`);
+      if (parent && record.projectId && projectOf(parent) !== record.projectId) problems.push(`${record.path}：剧本项目与所属场次不一致，请检查原笔记。`);
+    }
     entries.forEach(e => counts.set(e.record.id, (counts.get(e.record.id) ?? 0) + 1));
     for (const [id, count] of counts) if (count > 1) problems.push(`编号 ${id} 出现重复，请修复后再编辑。`);
     return { entries: entries.filter(e => counts.get(e.record.id) === 1), problems };
@@ -49,7 +55,7 @@ export class VaultRecords {
     return record;
   }
   async trashCard(base: FilmRecord) {
-    if (base.kind === 'scene') throw new RecordError('场次包含其他卡片，不能通过卡片删除操作移除。');
+    if (base.kind === 'scene' || base.kind === 'project') throw new RecordError(`${kindLabels[base.kind]}包含其他卡片，不能通过卡片删除操作移除。`);
     const { entries } = await this.scan();
     const entry = entries.find(e => e.record.id === base.id);
     if (!entry) throw new RecordError('卡片已移除、编号重复或无法读取，未执行删除。');
@@ -74,11 +80,14 @@ export class VaultRecords {
     } catch (e) { throw new RecordError(`素材卡尚未全部移除：${errorMessage(e)} 已完成的移除会保留，可重试；源文件未删除。`); }
     finally { await this.refresh(); }
   }
-  async create(kind: RecordKind, sceneId?: string) {
-    if (kind !== 'scene') {
-      const { entries } = await this.scan();
-      if (!entries.some(e => e.record.id === sceneId && e.record.kind === 'scene')) throw new RecordError('所属场次不存在或无法读取。');
-    }
+  async create(kind: RecordKind, sceneId?: string, projectId?: string, name?: string) {
+    const { entries, problems } = await this.scan();
+    if (problems.length) throw new RecordError('请先修复无法读取或归属异常的项目记录。');
+    const parent = entries.find(e => e.record.id === sceneId && e.record.kind === 'scene')?.record;
+    if (!['scene', 'project'].includes(kind) && !parent && !(projectId && ['person', 'setting', 'prop', 'asset', 'frame'].includes(kind) && !sceneId)) throw new RecordError('所属场次不存在或无法读取。');
+    if (parent && projectId && projectOf(parent) !== projectId) throw new RecordError('所属场次不在当前剧本项目。');
+    projectId = kind === 'project' ? undefined : projectId ?? (parent ? projectOf(parent) : LEGACY_PROJECT_ID);
+    if (projectId && projectId !== LEGACY_PROJECT_ID && !entries.some(e => e.record.kind === 'project' && e.record.id === projectId)) throw new RecordError('所属剧本项目不存在。');
     const existing = this.vault.getAbstractFileByPath(PROJECT_ROOT);
     if (existing && 'extension' in existing) throw new RecordError('“影视项目”已被同名文件占用，请先调整文件名。');
     if (!existing) {
@@ -86,15 +95,25 @@ export class VaultRecords {
       catch (error) { if (!this.vault.getAbstractFileByPath(PROJECT_ROOT)) throw error; }
     }
     const id = crypto.randomUUID();
-    const title = '新' + kindLabels[kind];
+    const title = name?.trim() || '新' + kindLabels[kind];
     const path = `${PROJECT_ROOT}/${title}-${id}.md`;
-    const source = newRecord(kind, id, title, sceneId);
+    const source = newRecord(kind, id, title, sceneId, projectId);
     await this.vault.create(path, source);
     await this.refresh();
     if (kind === 'shot') {
       try { await this.appendOrder(sceneId!, id); }
       catch (e) { throw new RecordError(`镜头已创建，但顺序保存失败：${errorMessage(e)}。请在镜头顺序列表中调整位置后重试，不必重复创建。`); }
     }
+    return parseRecord(source, path)!;
+  }
+  async nameProject(base: FilmRecord, title: string) {
+    if (base.kind !== 'project' || !title.trim()) throw new RecordError('请填写剧本项目名称。');
+    if (base.path) return this.save(base, { title: title.trim(), body: base.body });
+    if (base.id !== LEGACY_PROJECT_ID) throw new RecordError('剧本项目不存在。');
+    const source = newRecord('project', LEGACY_PROJECT_ID, title.trim());
+    const path = `${PROJECT_ROOT}/原有剧本项目.md`;
+    if ((await this.scan()).entries.some(e => e.record.id === LEGACY_PROJECT_ID)) throw new ConflictError('项目名称已更新，请重新读取。');
+    await this.vault.create(path, source); await this.refresh();
     return parseRecord(source, path)!;
   }
   async editMedia(shotId: string, edit: (items: MediaRef[]) => MediaRef[]) {
@@ -110,6 +129,10 @@ export class VaultRecords {
     if (!entry) throw new RecordError('卡片无法读取，未修改关系。');
     await this.vault.process(entry.file, raw => patchLinks(raw, recordId, links => {
       const next = edit(links);
+      for (const link of next.filter(l => !links.some(old => old.id === l.id && old.from === l.from && old.role === l.role))) {
+        const owners = entries.filter(e => link.from === `r:${e.record.id}` || link.from.startsWith('m:') && e.record.media?.some(m => `m:${m.id}` === link.from));
+        if (!owners.length || owners.every(e => projectOf(e.record, entries.map(e => e.record)) !== projectOf(entry.record, entries.map(e => e.record)))) throw new RecordError('只能关联当前剧本项目中的卡片或素材。');
+      }
       for (const l of next.filter(l => l.role === '拍摄资产' && !links.some(old => old.id === l.id && old.from === l.from && old.role === l.role))) {
         if (entry.record.kind !== 'script' || !entries.some(e => `r:${e.record.id}` === l.from && isProductionAsset(e.record))) throw new RecordError('拍摄资产必须关联已有的人物、场景或道具与剧本。');
       }
@@ -139,9 +162,10 @@ export class VaultRecords {
       if (existing.source !== origin || existing.kind !== item.kind || existing.sceneId !== sceneId) throw new ConflictError('预分配的资产编号已被其他记录使用。');
       return existing;
     }
-    if (!entries.some(e => e.record.id === sceneId && e.record.kind === 'scene')) throw new RecordError('所属场次已移除。');
+    const scene = entries.find(e => e.record.id === sceneId && e.record.kind === 'scene')?.record;
+    if (!scene) throw new RecordError('所属场次已移除。');
     const path = `${PROJECT_ROOT}/资产-${item.targetId}.md`;
-    let raw = newRecord(item.kind, item.targetId, item.title, sceneId);
+    let raw = newRecord(item.kind, item.targetId, item.title, sceneId, projectOf(scene));
     let base = parseRecord(raw, path)!;
     raw = patchRecord(raw, base, { title: item.title, body: item.description, source: origin });
     base = parseRecord(raw, path)!;
@@ -153,9 +177,11 @@ export class VaultRecords {
     const { entries } = await this.scan();
     const entry = entries.find(e => e.record.id === base.id && e.record.kind === 'script');
     if (!entry || !entries.some(e => e.record.id === assetId && isProductionAsset(e.record))) throw new RecordError('剧本或资产已移除，未增加关系。');
+    const all = entries.map(e => e.record), asset = all.find(r => r.id === assetId)!;
+    if (projectOf(entry.record, all) !== projectOf(asset, all)) throw new RecordError('只能关联同一剧本项目中的资产。');
     await this.vault.process(entry.file, raw => {
       const latest = parseRecord(raw, '')!;
-      if (latest.body !== base.body || latest.title !== base.title || latest.sceneId !== base.sceneId) throw new ConflictError('剧本已更新，请重新核对清单。');
+      if (latest.body !== base.body || latest.title !== base.title || latest.sceneId !== base.sceneId || latest.projectId !== base.projectId) throw new ConflictError('剧本已更新，请重新核对清单。');
       return patchLinks(raw, base.id, links => links.some(l => l.role === '拍摄资产' && l.from === `r:${assetId}`) ? links : [...links, { id: crypto.randomUUID(), from: `r:${assetId}`, role: '拍摄资产' }]);
     });
     await this.refresh();

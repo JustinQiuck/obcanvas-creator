@@ -1,5 +1,5 @@
 import { validAssetSkill, type AssetSkill } from './skill-model';
-import { isProductionAsset, productionKinds, type FilmRecord, type ProductionKind } from '../model';
+import { isProductionAsset, productionKinds, projectOf, projectRecords, type FilmRecord, type ProductionKind } from '../model';
 
 export type AssetItem = {
   id: string; kind: ProductionKind; title: string; description: string;
@@ -17,12 +17,12 @@ const text = (v: unknown, limit: number, empty = false): v is string => typeof v
 const list = (v: unknown): v is string[] => Array.isArray(v) && v.length <= 50 && v.every(s => text(s, 1000));
 export const taskIdValid = (v: unknown): v is string => typeof v === 'string' && /^[a-zA-Z0-9-]{1,80}$/.test(v);
 export async function inputVersion(script: FilmRecord) {
-  const bytes = new TextEncoder().encode(JSON.stringify([script.id, script.sceneId, script.title, script.body]));
+  const bytes = new TextEncoder().encode(JSON.stringify([script.id, script.sceneId, script.title, script.body, ...(script.projectId ? [script.projectId] : [])]));
   return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), b => b.toString(16).padStart(2, '0')).join('');
 }
 export function extractionContext(script: FilmRecord, records: FilmRecord[]) {
   if (script.kind !== 'script' || !script.body.trim()) throw new Error('请先填写并保存剧本。');
-  const existing = records.filter(isProductionAsset).map(r => ({ id: r.id, kind: r.kind, title: r.title, description: r.body }));
+  const existing = projectRecords(records, projectOf(script, records)).filter(isProductionAsset).map(r => ({ id: r.id, kind: r.kind, title: r.title, description: r.body }));
   const content = JSON.stringify({ script: { title: script.title, text: script.body }, existing });
   if (script.body.length > 40000 || content.length > 80000) throw new Error('本次内容过长，请缩小剧本范围或整理已有资产描述后重试；没有发送或截断内容。');
   return content;
@@ -42,6 +42,7 @@ function originalEvidence(body: string, quote: string): string | undefined {
   return original.length <= 3000 ? original : undefined;
 }
 export function parseSuggestions(raw: string, script: FilmRecord, existing: FilmRecord[]): { items: AssetItem[]; issues: string[] } {
+  existing = projectRecords(existing, projectOf(script, existing));
   if (raw.length > 200000) throw new Error('提取结果过长，请缩小本次剧本范围。');
   let data: unknown;
   try { data = JSON.parse(raw.trim().replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/i, '$1')); }

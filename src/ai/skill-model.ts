@@ -1,7 +1,7 @@
 import { parseDocument } from 'yaml';
 
 export type AssetSkill = { id: string; name: string; version: string; stage: 'assets'; instructions: string };
-export type SkillConfig = { version: 1; defaultAssetSkillId: string; scripts: Record<string, string>; custom: AssetSkill[] };
+export type SkillConfig = { version: 1; defaultAssetSkillId: string; scripts: Record<string, string>; projects?: Record<string, string>; custom: AssetSkill[] };
 const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const text = (v: unknown, max: number): v is string => typeof v === 'string' && !!v.trim() && v.length <= max;
 export function validAssetSkill(v: unknown): v is AssetSkill {
@@ -9,6 +9,7 @@ export function validAssetSkill(v: unknown): v is AssetSkill {
 }
 export function parseSkillConfig(raw: string): SkillConfig {
   const v: unknown = JSON.parse(raw);
+  if (object(v) && v.projects !== undefined && (!object(v.projects) || !Object.entries(v.projects).every(([id, choice]) => /^[a-zA-Z0-9-]{1,80}$/.test(id) && text(choice, 80)))) throw new Error('剧本项目 Skill 默认值无法读取，原文件已保留。');
   if (!object(v) || v.version !== 1 || !text(v.defaultAssetSkillId, 80) || !object(v.scripts) || Object.keys(v.scripts).length > 10000 || !Object.entries(v.scripts).every(([id, choice]) => text(id, 500) && text(choice, 80)) || !Array.isArray(v.custom) || v.custom.length > 100 || !v.custom.every(validAssetSkill) || v.custom.some(s => !s.id.startsWith('custom-')) || new Set(v.custom.map(s => s.id)).size !== v.custom.length) throw new Error('Skill 配置格式无法读取，原文件已保留。');
   return v as SkillConfig;
 }

@@ -1,4 +1,4 @@
-import { assetDetails, isProductionAsset, type FilmRecord } from '../model';
+import { assetDetails, isProductionAsset, projectOf, projectRecords, type FilmRecord } from '../model';
 import { taskIdValid } from './extraction-model';
 import type { StoryboardSkill } from './storyboard-skill';
 
@@ -38,7 +38,7 @@ const text = (v: unknown, limit: number, empty = false): v is string => typeof v
 
 export function storyboardAssets(script: FilmRecord, records: FilmRecord[]) {
   const ids = new Set((script.links ?? []).filter(link => link.role === '拍摄资产' && link.from.startsWith('r:')).map(link => link.from.slice(2)));
-  return records.filter(record => ids.has(record.id) && isProductionAsset(record));
+  return projectRecords(records, projectOf(script, records)).filter(record => ids.has(record.id) && isProductionAsset(record));
 }
 
 function assetSummary(record: FilmRecord) {
@@ -69,7 +69,7 @@ export function storyboardContext(script: FilmRecord, records: FilmRecord[]) {
 
 export async function storyboardInputVersion(script: FilmRecord, records: FilmRecord[]) {
   const source = storyboardSource(script, records);
-  const bytes = new TextEncoder().encode(JSON.stringify([script.id, script.sceneId, source]));
+  const bytes = new TextEncoder().encode(JSON.stringify([script.id, script.sceneId, source, ...(script.projectId ? [script.projectId] : [])]));
   return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), byte => byte.toString(16).padStart(2, '0')).join('');
 }
 

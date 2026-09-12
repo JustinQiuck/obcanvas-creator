@@ -1,4 +1,4 @@
-import { isProductionAsset, type FilmRecord } from '../model';
+import { isProductionAsset, projectOf, type FilmRecord } from '../model';
 import { VaultRecords, errorMessage } from '../storage/vault-records';
 import { VaultExtractions } from '../storage/vault-extractions';
 import { extractionContext, inputVersion, parseSuggestions, parseTask, type ExtractionTask } from './extraction-model';
@@ -96,10 +96,13 @@ export class ExtractionService {
         if (script.kind !== 'script' || script.sceneId !== task.sceneId || await inputVersion(script) !== task.inputVersion) throw new Error('剧本已更新，请按最新剧本重新整理；已保存的资产和本次清单均保留。');
         return script;
       };
-      await verifyScript();
+      const sourceScript = await verifyScript();
+      await this.records.refresh();
+      const projectCatalog = this.records.getSnapshot().records;
       for (const item of task.items.filter(i => i.action === 'reuse')) {
         const r = await this.records.requireRecord(item.targetId);
         if (!isProductionAsset(r) || r.kind !== item.kind) throw new Error('复用目标类型不符，请重新选择已有资产。');
+        if (projectOf(r, projectCatalog) !== projectOf(sourceScript, projectCatalog)) throw new Error('复用资产属于其他剧本项目，请重新选择。');
       }
       task = await this.storage.save({ ...task, status: 'applying' }, task); this.keep(task);
       try {

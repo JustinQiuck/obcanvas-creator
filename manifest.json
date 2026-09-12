@@ -1,9 +1,9 @@
 {
   "id": "obcanvas-creator",
   "name": "影视画布",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "minAppVersion": "1.13.7",
-  "description": "用自由画布整理剧本、拍摄资产与镜头，并生成可回查的分镜与起始关键帧预览。",
+  "description": "按剧本项目统一管理剧本、人物、场景、道具、分镜和生成素材，保留独立的自由画布。",
   "author": "JustinQiuck",
   "isDesktopOnly": true
 }

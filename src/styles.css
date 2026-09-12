@@ -1,4 +1,55 @@
 .obcanvas-root { padding: 0 !important; container-type: inline-size; }
+.obcanvas-root .obcanvas-library { display: flex; flex-direction: column; height: 100%; min-height: 400px; color: var(--text-normal); overflow: hidden; }
+.obcanvas-root .obcanvas-library-header { display: flex; align-items: center; gap: 18px; padding: 24px 28px 18px; border-bottom: 1px solid var(--background-modifier-border); flex-wrap: wrap; }
+.obcanvas-root .obcanvas-library-header h1 { font-size: 22px; margin: 0; }
+.obcanvas-root .obcanvas-library-header p { font-size: 12px; margin: 6px 0 0; }
+.obcanvas-root .obcanvas-library-header small { color: var(--text-muted); margin-left: auto; }
+.obcanvas-root .obcanvas-library-home { padding: 28px; overflow: auto; }
+.obcanvas-root .obcanvas-new-project, .obcanvas-root .obcanvas-project-rename { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; margin-bottom: 28px; }
+.obcanvas-root .obcanvas-new-project label { display: flex; flex-direction: column; gap: 8px; width: min(380px, 100%); }
+.obcanvas-root .obcanvas-project-rename { padding: 14px 28px; margin: 0; }
+.obcanvas-root .obcanvas-project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 18px; }
+.obcanvas-root .obcanvas-project-card { display: flex; flex-direction: column; align-items: start; text-align: left; gap: 20px; padding: 24px; min-height: 170px; height: auto; white-space: normal; border: 1px solid var(--background-modifier-border); border-radius: 10px; background: var(--background-secondary); box-shadow: none; }
+.obcanvas-root .obcanvas-project-card strong { font-size: 18px; }
+.obcanvas-root .obcanvas-project-card span { font-size: 12px; color: var(--text-muted); line-height: 1.8; }
+.obcanvas-root .obcanvas-project-card small { color: var(--text-accent); }
+.obcanvas-root .obcanvas-project-tabs { display: flex; gap: 6px; padding: 10px 24px; border-bottom: 1px solid var(--background-modifier-border); flex-wrap: wrap; }
+.obcanvas-root .obcanvas-project-tabs button { height: auto; padding: 10px 18px; background: transparent; box-shadow: none; border-radius: 6px; gap: 8px; }
+.obcanvas-root .obcanvas-project-tabs button[aria-current="page"] { background: var(--background-modifier-hover); color: var(--text-accent); font-weight: 600; }
+.obcanvas-root .obcanvas-project-tabs span { font-size: 11px; color: var(--text-muted); }
+.obcanvas-root .obcanvas-workspace-toolbar { display: flex; align-items: center; gap: 12px; padding: 16px 24px; flex-wrap: wrap; border-bottom: 1px solid var(--background-modifier-border); }
+.obcanvas-root .obcanvas-workspace-toolbar h2 { margin: 0 auto 0 0; font-size: 17px; }
+.obcanvas-root .obcanvas-workspace-toolbar [role="group"] { display: flex; gap: 6px; }
+.obcanvas-root .obcanvas-source-script { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.obcanvas-root .obcanvas-source-script select { max-width: 300px; }
+.obcanvas-root .obcanvas-library-split { display: grid; grid-template-columns: minmax(210px, 28%) minmax(0, 1fr); flex: 1; min-height: 0; }
+.obcanvas-root .obcanvas-library-list { overflow: auto; padding: 20px 16px; border-right: 1px solid var(--background-modifier-border); }
+.obcanvas-root .obcanvas-library-list > input { width: 100%; margin-bottom: 16px; }
+.obcanvas-root .obcanvas-asset-filters { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 16px; }
+.obcanvas-root .obcanvas-asset-filters button { font-size: 12px; box-shadow: none; }
+.obcanvas-root .obcanvas-library-row { width: 100%; display: flex; align-items: center; gap: 12px; height: auto; padding: 14px 10px; margin-bottom: 6px; background: transparent; border: 1px solid transparent; box-shadow: none; white-space: normal; text-align: left; }
+.obcanvas-root .obcanvas-library-row[aria-pressed="true"] { background: var(--background-secondary); border-color: var(--text-accent); }
+.obcanvas-root .obcanvas-library-row > span:last-child { min-width: 0; display: flex; flex-direction: column; gap: 7px; overflow-wrap: anywhere; }
+.obcanvas-root .obcanvas-library-row small { color: var(--text-muted); font-size: 11px; }
+.obcanvas-root .obcanvas-library-row img, .obcanvas-root .obcanvas-library-kind { width: 46px; height: 52px; flex-shrink: 0; border-radius: 4px; object-fit: cover; }
+.obcanvas-root .obcanvas-library-kind { display: grid; place-items: center; background: var(--background-secondary); font-size: 11px; color: var(--text-muted); }
+.obcanvas-root .obcanvas-library-detail, .obcanvas-root .obcanvas-task-workspace { overflow: auto; min-height: 0; padding: 28px; flex: 1; }
+.obcanvas-root .obcanvas-library-editor { max-width: 980px; margin: 0 auto; }
+.obcanvas-root .obcanvas-library-editor label, .obcanvas-root .obcanvas-task-workspace label { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; font-size: 13px; }
+.obcanvas-root .obcanvas-library-editor textarea, .obcanvas-root .obcanvas-task-workspace textarea { width: 100%; min-height: 96px; resize: vertical; }
+.obcanvas-root .obcanvas-library-editor textarea[aria-label="卡片内容"] { min-height: 260px; line-height: 1.8; }
+.obcanvas-root .obcanvas-library-editor footer { display: flex; gap: 8px; margin: 16px 0; flex-wrap: wrap; }
+.obcanvas-root .obcanvas-library-editor .obcanvas-asset-usage label { flex-direction: row; align-items: center; gap: 10px; }
+.obcanvas-root .obcanvas-asset-usage { padding: 18px 0; border-bottom: 1px solid var(--background-modifier-border); margin-bottom: 24px; }
+.obcanvas-root .obcanvas-script-destinations { margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--background-modifier-border); }
+.obcanvas-root .obcanvas-script-destinations button { margin: 6px 10px 0 0; }
+.obcanvas-root .obcanvas-workspace-empty { padding: 40px 10px; max-width: 580px; }
+.obcanvas-root .obcanvas-task-workspace > section { max-width: 1000px; margin: 0 auto; }
+.obcanvas-root .obcanvas-task-workspace .obcanvas-storyboard-item { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 24px; padding: 22px; }
+.obcanvas-root .obcanvas-task-workspace .obcanvas-storyboard-item label:nth-of-type(2), .obcanvas-root .obcanvas-task-workspace .obcanvas-storyboard-item label:nth-of-type(3), .obcanvas-root .obcanvas-task-workspace .obcanvas-storyboard-item label:nth-of-type(10) { grid-column: 1 / -1; }
+.obcanvas-root .obcanvas-job-status { display: flex; align-items: center; gap: 12px; padding: 8px 24px; margin: 0; font-size: 12px; }
+.obcanvas-root .obcanvas-library > .obcanvas-free { flex: 1; min-height: 0; height: auto; width: 100%; max-width: none; }
+@container (max-width: 700px) { .obcanvas-root .obcanvas-library-header { padding: 16px; gap: 10px; } .obcanvas-root .obcanvas-library-header small { display: none; } .obcanvas-root .obcanvas-library-split { grid-template-columns: 175px minmax(0, 1fr); } .obcanvas-root .obcanvas-library-detail, .obcanvas-root .obcanvas-task-workspace { padding: 16px; } .obcanvas-root .obcanvas-task-workspace .obcanvas-storyboard-item { display: block; } .obcanvas-root .obcanvas-project-tabs { padding: 8px; } }
 .obcanvas-root .obcanvas-workbench { max-width: 1200px; margin: 0 auto; padding: 28px; color: var(--text-normal); }
 .obcanvas-root .obcanvas-header { display: flex; justify-content: space-between; align-items: start; gap: 16px; padding-bottom: 22px; border-bottom: 1px solid var(--background-modifier-border); }
 .obcanvas-root h1 { font-size: 24px; margin: 0 0 8px; }

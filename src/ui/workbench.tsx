@@ -9,20 +9,19 @@ import { BoardCard } from '../canvas/board-card';
 import { buildGraph, type BoardNode, type BoardEdge } from '../canvas/graph';
 import { Preview } from './media-panel';
 import { RecordInspector } from './record-inspector';
-import { ExtractionPanel } from './extraction-panel';
 import { AssetPreparation } from './asset-preparation';
 import type { ExtractionService } from '../ai/extraction-service';
 import type { StoryboardService } from '../ai/storyboard-service';
-import { StoryboardPanel } from './storyboard-panel';
 import { DeleteCardDialog } from './delete-card-dialog';
 import { Viewports } from '../canvas/viewports';
 import { orderedShots, shotStatus, kindLabels, linkRoles, draftOf, isVideoPath, type RecordKind, type CardLink } from '../model';
-import { isProductionAsset, assetStatus } from '../model';
+import { isProductionAsset, assetStatus, projectRecords } from '../model';
 
-export function Workbench({ skills, records, editor, layout, viewports, media, openNote, extractions, storyboards, owner }: { skills: VaultSkills; records: VaultRecords; editor: EditorSession; layout: VaultLayout; viewports: Viewports; media: VaultMedia; openNote: (path: string) => Promise<void>; extractions: ExtractionService; storyboards: StoryboardService; owner: string }) {
+export function Workbench({ records, editor, layout, viewports, media, openNote, extractions, storyboards, projectId, openSection }: { skills: VaultSkills; records: VaultRecords; editor: EditorSession; layout: VaultLayout; viewports: Viewports; media: VaultMedia; openNote: (path: string) => Promise<void>; extractions: ExtractionService; storyboards: StoryboardService; owner: string; projectId: string; openSection: (section: 'assets' | 'storyboard', scriptId: string) => void }) {
   const extractionState = useSyncExternalStore(extractions.subscribe, extractions.getSnapshot);
   const storyboardState = useSyncExternalStore(storyboards.subscribe, storyboards.getSnapshot);
-  const catalog = useSyncExternalStore(records.subscribe, records.getSnapshot);
+  const fullCatalog = useSyncExternalStore(records.subscribe, records.getSnapshot);
+  const catalog = { ...fullCatalog, records: projectRecords(fullCatalog.records, projectId) };
   const state = useSyncExternalStore(editor.subscribe, editor.getSnapshot);
   const layoutState = useSyncExternalStore(layout.subscribe, layout.getSnapshot);
   const viewState = useSyncExternalStore(viewports.subscribe, viewports.getSnapshot);
@@ -32,7 +31,6 @@ export function Workbench({ skills, records, editor, layout, viewports, media, o
   const [panel, setPanel] = useState<'detail' | 'tasks' | 'order' | ''>(state.dirty ? 'detail' : '');
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [sourceId, setSourceId] = useState(''), [role, setRole] = useState('参考');
-  const [reuseId, setReuseId] = useState('');
   const [deleting, setDeleting] = useState<BoardNode | null>(null), [notice, setNotice] = useState('');
   const lock = useRef(false), input = useRef<HTMLInputElement>(null), board = useRef<HTMLDivElement>(null);
   const scenes = catalog.records.filter(r => r.kind === 'scene');
@@ -93,7 +91,7 @@ export function Workbench({ skills, records, editor, layout, viewports, media, o
   }
   async function ensureScene() {
     if (scene) return scene.id;
-    const created = await records.create('scene'); setSceneId(created.id); return created.id;
+    const created = await records.create('scene', undefined, projectId); setSceneId(created.id); return created.id;
   }
   function place(sceneId: string, recordId: string, preferred?: { x: number; y: number }) {
     const positions = layout.getSnapshot().data.scenes[sceneId]?.positions ?? {};
@@ -107,7 +105,7 @@ export function Workbench({ skills, records, editor, layout, viewports, media, o
   async function create(kind: RecordKind) {
     await run(async () => {
       const id = kind === 'scene' ? undefined : await ensureScene();
-      const r = await records.create(kind, id);
+      const r = await records.create(kind, id, projectId);
       if (kind === 'scene') { setSceneId(r.id); editor.clearSelection(); setSelectedKey(''); setPanel(''); }
       else {
         place(id!, r.id);
@@ -167,7 +165,7 @@ export function Workbench({ skills, records, editor, layout, viewports, media, o
     {deleting && <DeleteCardDialog node={deleting} records={catalog.records} busy={busy} error={error} cancel={() => { if (!busy) { setDeleting(null); setError(''); } }} confirm={confirmDelete} />}
     <header className="obcanvas-free-header"><strong>影视画布</strong><select aria-label="当前场次" value={activeScene} disabled={busy} onChange={e => { const id = e.target.value; void run(() => { setSceneId(id); editor.clearSelection(); setSelectedKey(''); setPanel(''); setSourceId(''); }); }}>
       {!scenes.length && <option value="">从剧本或素材开始</option>}{scenes.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
-    </select><button disabled={busy} onClick={() => void create('scene')}>新建场次</button><button disabled={busy || !scene} onClick={() => void run(() => { editor.select(scene!.id); setSelectedKey(`r:${scene!.id}`); setPanel('detail'); })}>场次名称</button><span className="obcanvas-hint">本地资料库 · 0.6.0</span></header>
+    </select><button disabled={busy} onClick={() => void create('scene')}>新建场次</button><button disabled={busy || !scene} onClick={() => void run(() => { editor.select(scene!.id); setSelectedKey(`r:${scene!.id}`); setPanel('detail'); })}>场次名称</button><span className="obcanvas-hint">当前剧本项目的场次画布</span></header>
     <nav className="obcanvas-free-tools" aria-label="添加到画布">
       {(['script', 'person', 'setting', 'prop', 'shot', 'frame'] as const).map(kind => <button key={kind} disabled={busy || catalog.loading} onClick={() => void create(kind)}>＋ {kindLabels[kind]}</button>)}
       <button disabled={busy} onClick={() => input.current?.click()}>＋ 图片 / 视频</button><button disabled={busy} onClick={pickAsset}>关联库内素材</button>
@@ -189,9 +187,8 @@ export function Workbench({ skills, records, editor, layout, viewports, media, o
         <div className="obcanvas-card-heading"><h2>{panel === 'detail' ? selected?.label ?? '场次' : panel === 'tasks' ? '下一步做什么' : '镜头顺序'}</h2><span>{panel === 'detail' && selected && <button disabled={busy || state.saving || extractionState.busy || storyboardState.busy} onClick={() => requestDelete()}>{selected.record ? '删除卡片' : '移除素材卡'}</button>}<button aria-label="关闭详情" onClick={() => void run(() => setPanel(''))}>×</button></span></div>
         {panel === 'detail' && <>
           {selected?.record?.kind === 'script' && <>
-            <ExtractionPanel skills={skills} script={selected.record} records={catalog.records} service={extractions} blocked={storyboardState.busy} start={() => void run(() => { const id = selected.record!.id; void extractions.start(id, owner, skills.resolve(id)).catch(() => {}); })} apply={() => void run(async () => { const task = extractions.getSnapshot().tasks.find(t => t.scriptId === selected.record!.id); if (task) await extractions.apply(task); })} openAsset={id => { const node = graph.nodes.find(n => n.record?.id === id); if (node) select(node, true); else setError('资产已移除或无法读取，请检查项目记录。'); }} />
-            <StoryboardPanel script={selected.record} records={catalog.records} service={storyboards} blocked={extractionState.busy} start={() => void run(() => { const id = selected.record!.id; void storyboards.start(id, owner).catch(() => {}); })} />
-            <details><summary>关联已有拍摄资产（可跨场次复用）</summary><select aria-label="已有拍摄资产" value={reuseId} onChange={e => setReuseId(e.target.value)}><option value="">选择人物、场景或道具…</option>{catalog.records.filter(isProductionAsset).map(r => <option key={r.id} value={r.id}>{kindLabels[r.kind]} · {r.title}</option>)}</select><button disabled={busy || !reuseId} onClick={() => void run(async () => { await records.attachScriptAsset(await records.requireRecord(selected.record!.id), reuseId); setReuseId(''); })}>关联到剧本</button></details>
+            <p className="obcanvas-hint">人物、场景和道具在项目资产库统一管理。</p>
+            <div className="obcanvas-tools"><button onClick={() => void run(() => openSection('assets', selected.record!.id))}>打开项目资产库</button><button onClick={() => void run(() => openSection('storyboard', selected.record!.id))}>打开分镜工作区</button></div>
           </>}
           {selected?.record && isProductionAsset(selected.record) && <AssetPreparation key={selected.record.id} record={selected.record} records={records} media={media} />}
           {state.base && (selected?.record || state.base.kind === 'scene') ? <RecordInspector record={selected?.record ?? state.base} state={state} editor={editor} media={media} busy={busy} openNote={() => void run(() => openNote(state.base!.path))} /> : selected?.reference && <><h3>{selected.title}</h3><Preview key={media.previewKey(selected.reference)} media={media} reference={selected.reference} onReady={() => {}} onUnavailable={() => {}} /><p className="obcanvas-hint">采用和退回请在下方对应镜头中操作。</p></>}

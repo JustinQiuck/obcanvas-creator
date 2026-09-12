@@ -2,26 +2,26 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { exportSkillMarkdown, importSkillMarkdown, type AssetSkill } from '../ai/skill-model';
 import type { VaultSkills } from '../storage/vault-skills';
 
-export function AssetSkillPicker({ skills, scriptId, busy }: { skills: VaultSkills; scriptId: string; busy: boolean }) {
+export function AssetSkillPicker({ skills, scriptId, busy, projectId }: { skills: VaultSkills; scriptId: string; busy: boolean; projectId?: string }) {
   const state = useSyncExternalStore(skills.subscribe, skills.getSnapshot);
   const [managing, setManaging] = useState(false), [error, setError] = useState('');
   const choice = Object.hasOwn(state.config.scripts, scriptId) ? state.config.scripts[scriptId]! : '';
-  const current = state.skills.find(s => s.id === skills.choice(scriptId));
+  const current = state.skills.find(s => s.id === skills.choice(scriptId, projectId));
   const disabled = busy || state.busy || state.loading || !!state.error;
   return <div className="obcanvas-skill-picker">
     <label>资产整理 Skill<select aria-label="资产整理 Skill" disabled={disabled} value={choice} onChange={e => { void skills.choose(e.target.value, scriptId).then(() => setError('')).catch(e => setError(e.message)); }}>
-      <option value="">跟随项目默认 · {state.skills.find(s => s.id === state.config.defaultAssetSkillId)?.name ?? 'Skill 已不存在'}</option>
+      <option value="">跟随项目默认 · {state.skills.find(s => s.id === skills.choice(undefined, projectId))?.name ?? 'Skill 已不存在'}</option>
       {choice && !state.skills.some(s => s.id === choice) && <option value={choice}>所选 Skill 已不存在，请重新选择</option>}
       {state.skills.map(s => <option key={s.id} value={s.id}>{s.name}{s.id.startsWith('custom-') ? ' · 自定义' : ''}</option>)}
     </select></label>
     <p className="obcanvas-hint">本次使用：{current?.name ?? '请选择有效 Skill'}。只提取资产，镜头语言与节奏属于分镜设计阶段。</p>
     <button disabled={busy || state.loading || state.busy} onClick={() => setManaging(true)}>管理 Skill</button>
     {(error || state.error) && <p role="alert">{error || state.error}<button onClick={() => { void skills.refresh(); setError(''); }}>重新读取 Skill</button></p>}
-    {managing && <SkillManager skills={skills} initialId={current?.id} close={() => setManaging(false)} useSkill={async skill => { await skills.choose(skill.id, scriptId); setManaging(false); }} />}
+    {managing && <SkillManager skills={skills} projectId={projectId} initialId={current?.id} close={() => setManaging(false)} useSkill={async skill => { await skills.choose(skill.id, scriptId); setManaging(false); }} />}
   </div>;
 }
 
-function SkillManager({ skills, initialId, close, useSkill }: { skills: VaultSkills; initialId?: string; close: () => void; useSkill: (skill: AssetSkill) => Promise<void> }) {
+function SkillManager({ skills, initialId, close, useSkill, projectId }: { skills: VaultSkills; initialId?: string; close: () => void; useSkill: (skill: AssetSkill) => Promise<void>; projectId?: string }) {
   const state = useSyncExternalStore(skills.subscribe, skills.getSnapshot), dialog = useRef<HTMLDialogElement>(null);
   const first = state.skills.find(s => s.id === initialId) ?? state.skills[0]!;
   const [base, setBase] = useState<AssetSkill | undefined>(first), [name, setName] = useState(first.name), [body, setBody] = useState(first.instructions);
@@ -38,8 +38,8 @@ function SkillManager({ skills, initialId, close, useSkill }: { skills: VaultSki
   }
   return <dialog ref={dialog} className="obcanvas-skill-dialog" aria-label="管理资产 Skill" onKeyDown={e => e.stopPropagation()} onCancel={e => { e.preventDefault(); cancel(); }}>
     <h2>管理资产 Skill</h2><p>写资产分析方法即可，输出格式由插件补齐。导入只读取 Markdown 文字，不加载附带文件或执行脚本。</p>
-    <label>项目默认 Skill<select aria-label="项目默认 Skill" value={state.config.defaultAssetSkillId} disabled={busy || !!state.error} onChange={e => { void skills.choose(e.target.value).catch(e => setError(e.message)); }}>
-      {!state.skills.some(s => s.id === state.config.defaultAssetSkillId) && <option value={state.config.defaultAssetSkillId}>原默认 Skill 已不存在</option>}
+    <label>项目默认 Skill<select aria-label="项目默认 Skill" value={skills.choice(undefined, projectId)} disabled={busy || !!state.error} onChange={e => { void skills.choose(e.target.value, undefined, projectId).catch(e => setError(e.message)); }}>
+      {!state.skills.some(s => s.id === skills.choice(undefined, projectId)) && <option value={skills.choice(undefined, projectId)}>原默认 Skill 已不存在</option>}
       {state.skills.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
     </select></label>
     <label>查看或编辑<select aria-label="查看或编辑 Skill" value={base?.id ?? ''} disabled={busy || dirty} onChange={e => { const skill = state.skills.find(s => s.id === e.target.value); if (skill) load(skill); }}>

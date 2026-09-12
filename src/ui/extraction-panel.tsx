@@ -1,13 +1,13 @@
 import type { VaultSkills } from '../storage/vault-skills';
 import { AssetSkillPicker } from './asset-skill-picker';
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { isProductionAsset, kindLabels, type FilmRecord } from '../model';
+import { isProductionAsset, kindLabels, projectOf, type FilmRecord } from '../model';
 import { inputVersion, type AssetItem } from '../ai/extraction-model';
 import type { ExtractionService } from '../ai/extraction-service';
 
 export function ExtractionPanel({ skills, script, records, service, start, apply, openAsset, blocked = false }: { skills: VaultSkills; script: FilmRecord; records: FilmRecord[]; service: ExtractionService; start: () => void; apply: () => void; openAsset: (id: string) => void; blocked?: boolean }) {
   const skillState = useSyncExternalStore(skills.subscribe, skills.getSnapshot);
-  const activeSkill = skillState.skills.find(s => s.id === skills.choice(script.id));
+  const activeSkill = skillState.skills.find(s => s.id === skills.choice(script.id, projectOf(script, records)));
   const state = useSyncExternalStore(service.subscribe, service.getSnapshot);
   const task = state.tasks.find(t => t.scriptId === script.id);
   const [version, setVersion] = useState(''), [error, setError] = useState('');
@@ -20,7 +20,7 @@ export function ExtractionPanel({ skills, script, records, service, start, apply
   }
   return <section className="obcanvas-extraction" aria-label="拍摄资产清单">
     <h3>拍摄资产</h3><p className="obcanvas-hint">整理将发送当前剧本与项目已有资产的文字摘要给你配置的模型。图片留在本地。</p>
-    <AssetSkillPicker skills={skills} scriptId={script.id} busy={state.busy || blocked} />
+    <AssetSkillPicker skills={skills} scriptId={script.id} projectId={projectOf(script, records)} busy={state.busy || blocked} />
     <button className="mod-cta" disabled={state.busy || blocked || skillState.busy || skillState.loading || !!skillState.error || !activeSkill} onClick={start}>{state.busy && state.scriptId === script.id ? '正在处理…' : task ? '重新提取拍摄资产' : '整理拍摄资产'}</button>
     {state.busy && <button onClick={() => service.cancel()}>取消分析</button>}
     {state.message && (!state.scriptId || state.scriptId === script.id) && <p role="status">{state.message}</p>}{error && <p role="alert">{error}</p>}

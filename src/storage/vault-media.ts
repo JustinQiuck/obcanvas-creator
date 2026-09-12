@@ -1,6 +1,6 @@
 import { FuzzySuggestModal, Notice, type App, type TFile } from 'obsidian';
 import type { MediaRef, FilmRecord } from '../model';
-import { validMediaPath, isImagePath } from '../model';
+import { validMediaPath, isImagePath, projectOf, projectRecords } from '../model';
 import { errorMessage, VaultRecords, PROJECT_ROOT } from './vault-records';
 export function mediaKind(path: string): 'image' | 'video' | null {
   const ext = path.split('.').pop()?.toLowerCase();
@@ -53,7 +53,8 @@ export class VaultMedia {
     return this.enqueue(async () => {
       if (!validMediaPath(path) || !mediaKind(path) || !this.app.vault.getFileByPath(path)) throw new Error('请选取资料库内可读取的图片或视频。');
       await this.records.refresh();
-      const existing = this.records.getSnapshot().records.flatMap(r => r.media ?? []).find(m => m.path === path);
+      const target = await this.records.requireRecord(shotId), catalog = this.records.getSnapshot().records;
+      const existing = projectRecords(catalog, projectOf(target, catalog)).flatMap(r => r.media ?? []).find(m => m.path === path);
       const ref = { id: existing?.id ?? crypto.randomUUID(), path };
       await this.records.editMedia(shotId, items => items.some(m => m.path === path) ? items : [...items, ref]);
     });
@@ -88,7 +89,9 @@ export class VaultMedia {
       await this.records.refresh();
       const records = this.records.getSnapshot().records;
       if (path !== ref.path && records.some(r => r.media?.some(m => m.id === ref.id && m.decision === 'adopted'))) throw new Error('这份视频已有镜头采用，请先取消采用，再替换文件。');
-      const canonical = records.flatMap(r => r.media ?? []).find(m => m.path === path);
+      const scopes = new Set(records.filter(r => r.media?.some(m => m.id === ref.id)).map(r => projectOf(r, records)));
+      if (scopes.size > 1) throw new Error('这份旧素材被多个剧本项目共用，请先检查归属再替换。');
+      const canonical = records.filter(r => scopes.has(projectOf(r, records))).flatMap(r => r.media ?? []).find(m => m.path === path);
       // Relinking deliberately applies to every shot using this media ID.
       for (const record of records.filter(r => r.media?.some(m => m.id === ref.id))) {
         await this.records.editMedia(record.id, items => {

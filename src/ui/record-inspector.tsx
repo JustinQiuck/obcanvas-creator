@@ -13,10 +13,10 @@ export function RecordInspector({ record, state, editor, media, openNote, busy }
       <label>机位与运动<input aria-label="机位与运动" value={state.draft.camera ?? ''} onChange={e => editor.edit('camera', e.target.value)} /></label>
       <p className="obcanvas-hint">当前可记录或粘贴已有分镜分析，尚未接入 AI 拆镜。</p>
     </details>}
-    <details><summary>提示词与来源（可选）</summary><label>原提示词<textarea aria-label="原提示词" rows={4} value={state.draft.prompt ?? ''} onChange={e => editor.edit('prompt', e.target.value)} /></label><label>来源备注<input aria-label="来源备注" value={state.draft.source ?? ''} onChange={e => editor.edit('source', e.target.value)} /></label></details>
+    {record.kind !== 'script' && <details><summary>提示词与来源（可选）</summary><label>原提示词<textarea aria-label="原提示词" rows={4} value={state.draft.prompt ?? ''} onChange={e => editor.edit('prompt', e.target.value)} /></label><label>来源备注<input aria-label="来源备注" value={state.draft.source ?? ''} onChange={e => editor.edit('source', e.target.value)} /></label></details>}
     {state.message && <p role={['error', 'conflict'].includes(state.status) ? 'alert' : 'status'}>{state.message}</p>}
     <footer><button className="mod-cta" disabled={!state.dirty} onClick={() => void editor.save()}>保存到笔记</button><button onClick={openNote}>打开对应笔记</button>{state.dirty && <button onClick={() => void editor.loadLatest()}>放弃本地修改，载入笔记</button>}</footer>
     <span data-save-status={state.saving ? 'saving' : state.status} role="status">{state.saving ? '保存中…' : state.dirty ? '尚未保存 · 切换卡片时保存，失败保留输入' : '已保存到资料库'}</span>
-    {record.kind !== 'scene' && <MediaPanel key={record.id} shot={record} media={media} /> }
+    {!['scene', 'script', 'project'].includes(record.kind) && <MediaPanel key={record.id} shot={record} media={media} /> }
   </fieldset>;
 }

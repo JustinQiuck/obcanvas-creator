@@ -2,13 +2,15 @@ import { ItemView, type WorkspaceLeaf, type ViewStateResult } from 'obsidian';
 import { createRoot, type Root } from 'react-dom/client';
 import type ObCanvasPlugin from './main';
 import { EditorSession } from './editor-session';
-import { Workbench } from './ui/workbench';
+import { LibraryWorkspace } from './ui/library-workspace';
+import { LibraryNavigation } from './library-navigation';
 import { Viewports } from './canvas/viewports';
 export const VIEW_TYPE = 'obcanvas-film-view';
 export class FilmView extends ItemView {
   private root: Root | null = null;
   editor!: EditorSession;
   viewports = new Viewports(() => this.app.workspace.requestSaveLayout());
+  libraryNavigation = new LibraryNavigation(() => this.app.workspace.requestSaveLayout());
   private sessionId = '';
   private stopTracking?: () => void;
   constructor(leaf: WorkspaceLeaf, readonly plugin: ObCanvasPlugin) { super(leaf); }
@@ -25,12 +27,13 @@ export class FilmView extends ItemView {
       this.app.workspace.requestSaveLayout();
     });
     this.root = createRoot(this.contentEl);
-    this.root.render(<Workbench skills={this.plugin.skills} records={this.plugin.records} layout={this.plugin.layout} viewports={this.viewports} media={this.plugin.media} editor={this.editor} extractions={this.plugin.extractions} storyboards={this.plugin.storyboards} owner={this.sessionId} openNote={async path => { await this.app.workspace.openLinkText(path, '', 'split'); }} />);
+    this.root.render(<LibraryWorkspace navigation={this.libraryNavigation} skills={this.plugin.skills} records={this.plugin.records} layout={this.plugin.layout} viewports={this.viewports} media={this.plugin.media} editor={this.editor} extractions={this.plugin.extractions} storyboards={this.plugin.storyboards} owner={this.sessionId} openNote={async path => { await this.app.workspace.openLinkText(path, '', 'split'); }} />);
   }
-  getState() { return { shotId: this.editor?.getSnapshot().selectedId, viewports: this.viewports.getSnapshot() }; }
-  async setState(state: { shotId?: string; viewports?: unknown }, result: ViewStateResult) {
+  getState() { return { shotId: this.editor?.getSnapshot().selectedId, viewports: this.viewports.getSnapshot(), library: this.libraryNavigation.getSnapshot() }; }
+  async setState(state: { shotId?: string; viewports?: unknown; library?: unknown }, result: ViewStateResult) {
     if (typeof state.shotId === 'string' && !this.editor.getSnapshot().dirty) this.editor.select(state.shotId);
     this.viewports.restore(state.viewports);
+    this.libraryNavigation.restore(state.library);
     await super.setState(state, result);
   }
   async onClose() {
