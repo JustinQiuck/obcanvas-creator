@@ -7,6 +7,8 @@
 .obcanvas-root .obcanvas-library-home { padding: 28px; overflow: auto; }
 .obcanvas-root .obcanvas-new-project, .obcanvas-root .obcanvas-project-rename { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; margin-bottom: 28px; }
 .obcanvas-root .obcanvas-new-project label { display: flex; flex-direction: column; gap: 8px; width: min(380px, 100%); }
+.obcanvas-root .obcanvas-new-project-hint { flex-basis: 100%; margin: 0; color: var(--text-muted); }
+.obcanvas-root .obcanvas-new-project-hint[role="alert"] { color: var(--text-error); }
 .obcanvas-root .obcanvas-project-rename { padding: 14px 28px; margin: 0; }
 .obcanvas-root .obcanvas-project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 18px; }
 .obcanvas-root .obcanvas-project-card { display: flex; flex-direction: column; align-items: start; text-align: left; gap: 20px; padding: 24px; min-height: 170px; height: auto; white-space: normal; border: 1px solid var(--background-modifier-border); border-radius: 10px; background: var(--background-secondary); box-shadow: none; }

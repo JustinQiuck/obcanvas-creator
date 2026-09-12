@@ -21,6 +21,20 @@ class MemoryVault {
 }
 const record = (kind: Parameters<typeof newRecord>[0], id: string, scene?: string, project?: string) => parseRecord(newRecord(kind, id, id, scene, project), `${id}.md`)!;
 
+test('项目名称作为显示内容保存，特殊字符和长名称不成为文件路径', async () => {
+  const vault = new MemoryVault(), records = new VaultRecords(vault.port());
+  for (const title of ['回家 / 夏日音乐 MV', '../影片\\第二集:人物?*<>|', '影'.repeat(250)]) {
+    const project = await records.create('project', undefined, undefined, title);
+    const parts = project.path.split('/');
+    assert.equal(parts.length, 2); assert.equal(parts[0], '影视项目');
+    assert.doesNotMatch(parts[1]!, /[\\:*?"<>|]/); assert.ok(Buffer.byteLength(parts[1]!) <= 255);
+    assert.equal(project.title, title);
+    const reopened = new VaultRecords(vault.port()); await reopened.refresh();
+    assert.equal(reopened.getSnapshot().records.find(r => r.id === project.id)?.title, title);
+    assert.deepEqual(reopened.getSnapshot().problems, []);
+  }
+});
+
 test('旧记录只读归入原有剧本项目，改项目名不改原笔记、关系或布局', async () => {
   const vault = new MemoryVault(), records = new VaultRecords(vault.port());
   const raw = newRecord('scene', 'legacy-scene', '旧场次') + '逐字保留。';

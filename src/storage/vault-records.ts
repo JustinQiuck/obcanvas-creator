@@ -96,7 +96,8 @@ export class VaultRecords {
     }
     const id = crypto.randomUUID();
     const title = name?.trim() || '新' + kindLabels[kind];
-    const path = `${PROJECT_ROOT}/${title}-${id}.md`;
+    // User titles may contain path separators or exceed filesystem name limits.
+    const path = `${PROJECT_ROOT}/${kindLabels[kind]}-${id}.md`;
     const source = newRecord(kind, id, title, sceneId, projectId);
     await this.vault.create(path, source);
     await this.refresh();

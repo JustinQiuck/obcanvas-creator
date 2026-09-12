@@ -21,6 +21,8 @@ export function LibraryWorkspace(props: Props) {
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all'), [assetMode, setAssetMode] = useState<'browse' | 'extract'>('browse');
   const [projectName, setProjectName] = useState(''), [renaming, setRenaming] = useState(false);
+  const [nameRequired, setNameRequired] = useState(false);
+  const projectNameInput = useRef<HTMLInputElement>(null);
   const [deleting, setDeleting] = useState<FilmRecord | null>(null);
   const lock = useRef(false), upload = useRef<HTMLInputElement>(null);
   const projects = filmProjects(catalog.records), project = projects.find(p => p.id === location.projectId);
@@ -60,13 +62,14 @@ export function LibraryWorkspace(props: Props) {
   }
   const header = <header className="obcanvas-library-header">
     {project ? <><button disabled={disabled || aiBusy} onClick={() => void run(() => { navigation.update({ projectId: '' }); editor.clearSelection(); setProjectName(''); })}>← 剧本项目库</button><div><h1>{project.title}</h1><p>这个项目的剧本、人物、场景、道具和制作结果，都在这里。</p></div><button disabled={disabled} onClick={() => { setProjectName(project.title); setRenaming(!renaming); }}>修改项目名称</button></> : <div><h1>剧本项目库</h1><p>一部影片，一个项目。进入项目后统一管理剧本和全部拍摄资产。</p></div>}
-    <small>本地资料库 · 0.7.0</small>
+    <small>本地资料库 · 0.7.1</small>
   </header>;
   const problem = (error || catalog.problems.length > 0) && <div role="alert" className="obcanvas-alert">{error}{catalog.problems.map(p => <p key={p}>{p}</p>)}<button onClick={() => { setError(''); void records.refresh(); }}>重新读取</button></div>;
   if (!project) return <section className="obcanvas-library" aria-label="剧本项目库" aria-busy={disabled}>{header}{problem}
     {location.projectId && <p role="alert">原项目暂时无法读取，请恢复项目笔记，或选择下方项目。</p>}
-    <div className="obcanvas-library-home"><form className="obcanvas-new-project" onSubmit={e => { e.preventDefault(); void run(async () => { const p = await records.create('project', undefined, undefined, projectName); setProjectName(''); navigation.update({ projectId: p.id, section: 'scripts', scriptId: '' }); }); }}>
-      <label>项目名称<input aria-label="新剧本项目名称" value={projectName} maxLength={250} placeholder="例如：回家 / 夏日音乐 MV" onChange={e => setProjectName(e.target.value)} /></label><button className="mod-cta" disabled={disabled || catalog.loading || aiBusy || !projectName.trim()}>新建剧本项目</button>
+    <div className="obcanvas-library-home"><form className="obcanvas-new-project" onSubmit={e => { e.preventDefault(); if (!projectName.trim()) { setNameRequired(true); projectNameInput.current?.focus(); return; } setNameRequired(false); void run(async () => { const p = await records.create('project', undefined, undefined, projectName); setProjectName(''); navigation.update({ projectId: p.id, section: 'scripts', scriptId: '' }); }); }}>
+      <label>项目名称<input ref={projectNameInput} aria-label="新剧本项目名称" aria-invalid={nameRequired} value={projectName} maxLength={250} placeholder="输入影片名称，例如：夏日音乐 MV" onChange={e => { setProjectName(e.target.value); setNameRequired(false); }} /></label><button type="submit" className="mod-cta" disabled={disabled || catalog.loading || aiBusy}>{busy ? '正在创建…' : '新建剧本项目'}</button>
+      <p className="obcanvas-new-project-hint" role={nameRequired ? 'alert' : undefined}>{nameRequired ? '请先填写项目名称，再点击新建。' : '先填写项目名称，再点击新建；创建后即可添加剧本和拍摄资产。'}</p>
     </form><div className="obcanvas-project-grid">{projects.map(p => { const list = projectRecords(catalog.records, p.id); return <button key={p.id} className="obcanvas-project-card" disabled={disabled || aiBusy} data-project-id={p.id} onClick={() => enter(p.id)}><strong>{p.title}</strong><span>{list.filter(r => r.kind === 'script').length} 份剧本 · {list.filter(isProductionAsset).length} 项拍摄资产 · {list.filter(r => r.kind === 'shot').length} 个镜头</span><small>进入项目 →</small></button>; })}</div>
     {!catalog.loading && !projects.length && <p>先为你的影片建立一个剧本项目，再放入剧本。</p>}
     </div></section>;
