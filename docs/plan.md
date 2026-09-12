@@ -1,8 +1,10 @@
 # ObCanvas Creator 实施计划
 
+2026-09-12 生成段范围确认：用户不需要参考片研究，重点引入“镜头 → 生成段 → 生成尝试 → 按镜头选片”，见 [生成段融合计划](generation-segments-plan.md)。后续 DS02–DS04／DS06 以该计划细化；一镜一包是单镜生成段的特例。生成段尚未实现，RunningHub 继续外部生成。
+
 2026-09-12 优先调整：用户指出所有内容挤在剧本卡内，要求统一项目资产归属。按 [剧本项目库与独立工作区](project-library-plan.md) 实现 0.7.0：资料库容纳多个剧本项目，资产归项目，剧本／场次引用资产；剧本、资产库、分镜、素材和画布分别操作。下面 DS01 和历史路线保留，其“资料库即项目”假设由本条替代。
 
-状态：当前源码为 0.6.0，已具备 AI 资产准备、参考图绑定、资产 Skill 选择与自定义，以及独立保存的分镜与静态起始关键帧预览。验证见 [资产准备](validation/a-assets.md)、[Skill 选择](validation/skills.md) 与 [DS01 分镜预览](validation/storyboard-ds01.md)；真实模型效果与用户操作验收仍待完成。
+状态：当前源码为 0.8.0，已具备项目库、项目删除、多模型配置与选择、资产准备、参考图绑定、资产 Skill 选择与自定义及分镜预览。验证见 [项目库](validation/project-library.md)、[项目删除](validation/project-deletion.md)、[多模型](validation/model-profiles.md) 与 [分镜预览](validation/storyboard-ds01.md)；真实分镜质量与完整制作验收仍待完成。
 
 2026-09-12 最新进展：[Drama Skills 接入评估与实施计划](drama-skills-integration-plan.md) 的 DS01 工程试点已经实现。当前先用独立 JSON 任务承载分镜建议，未写入正式镜头；下一步以真实模型对照判断规则是否有效，再接镜头卡、图片/视频提示词和外部制作包。上游文件规范继续转换为现有卡片记录，RunningHub 继续外部生成。进度统一见 [TODO](TODO.md)。
 
