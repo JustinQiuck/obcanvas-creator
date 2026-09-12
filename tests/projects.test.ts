@@ -10,6 +10,9 @@ import { buildGraph } from '../src/canvas/graph';
 import { LibraryNavigation } from '../src/library-navigation';
 
 class MemoryVault {
+  trashed = new Map<string, { path: string; extension: string; source: string }>();
+  failTrashAt = 0;
+  async trash(file: { path: string; extension: string; source: string }, system: boolean) { assert.equal(system, false); if (this.failTrashAt && this.trashed.size + 1 === this.failTrashAt) throw new Error('回收站写入失败'); this.trashed.set(file.path, file); this.files.delete(file.path); }
   files = new Map<string, { path: string; extension: string; source: string }>(); folders = new Set(['影视项目']);
   getMarkdownFiles() { return [...this.files.values()].filter(f => f.extension === 'md'); }
   getAbstractFileByPath(path: string) { return this.files.get(path) ?? (this.folders.has(path) ? { path } : null); }
@@ -20,6 +23,46 @@ class MemoryVault {
   port() { return this as unknown as Vault; }
 }
 const record = (kind: Parameters<typeof newRecord>[0], id: string, scene?: string, project?: string) => parseRecord(newRecord(kind, id, id, scene, project), `${id}.md`)!;
+
+test('项目删除仅回收所属笔记，源文件和其他项目保留，恢复后关系完整', async () => {
+  const vault = new MemoryVault(), records = new VaultRecords(vault.port());
+  const a = await records.create('project'), b = await records.create('project');
+  const scene = await records.create('scene', undefined, a.id), script = await records.create('script', scene.id);
+  const person = await records.create('person', undefined, a.id); await records.attachScriptAsset(script, person.id);
+  await vault.create('影视项目/视频.mp4', 'media');
+  const before = new Map([...vault.files].map(([p, f]) => [p, f.source]));
+  const plan = await records.prepareProjectDeletion(a.id);
+  assert.equal(vault.trashed.size, 0); assert.equal(plan.records.length, 3);
+  await records.trashProject(plan);
+  assert.equal(vault.trashed.size, 4); assert.ok(vault.files.has(b.path)); assert.ok(vault.files.has('影视项目/视频.mp4'));
+  assert.deepEqual(records.getSnapshot().problems, []);
+  for (const [p, f] of vault.trashed) vault.files.set(p, f);
+  await records.refresh(); assert.deepEqual(new Map([...vault.files].map(([p, f]) => [p, f.source])), before);
+  assert.equal((await records.requireRecord(script.id)).links?.[0]?.from, `r:${person.id}`);
+});
+
+test('删除前内容变化拒绝执行；中途失败保留项目与场次并允许重新确认重试', async () => {
+  const vault = new MemoryVault(), records = new VaultRecords(vault.port());
+  const p = await records.create('project'), scene = await records.create('scene', undefined, p.id);
+  await records.create('script', scene.id);
+  const stale = await records.prepareProjectDeletion(p.id);
+  await records.create('person', undefined, p.id);
+  await assert.rejects(records.trashProject(stale), /内容已变化/); assert.equal(vault.trashed.size, 0);
+  vault.failTrashAt = 2;
+  await assert.rejects(records.trashProject(await records.prepareProjectDeletion(p.id)), /已移入回收站 1/);
+  assert.ok(vault.files.has(p.path)); assert.ok(vault.files.has(scene.path)); assert.deepEqual(records.getSnapshot().problems, []);
+  vault.failTrashAt = 0; await records.trashProject(await records.prepareProjectDeletion(p.id));
+  assert.equal(filmProjects(records.getSnapshot().records).length, 0);
+});
+
+test('未命名旧项目可删除，先删除场次子项避免归属改变', async () => {
+  const vault = new MemoryVault(), records = new VaultRecords(vault.port());
+  const scene = await records.create('scene'), script = await records.create('script', scene.id);
+  await vault.process(vault.files.get(script.path)!, raw => raw.replace(/^projectId:.*\n/m, ''));
+  const other = await records.create('project');
+  await records.trashProject(await records.prepareProjectDeletion(LEGACY_PROJECT_ID));
+  assert.deepEqual(records.getSnapshot().records.map(r => r.id), [other.id]);
+});
 
 test('项目名称作为显示内容保存，特殊字符和长名称不成为文件路径', async () => {
   const vault = new MemoryVault(), records = new VaultRecords(vault.port());

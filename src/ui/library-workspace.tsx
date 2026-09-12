@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type ComponentProps } from 'react';
 import { filmProjects, projectOf, projectRecords, isProductionAsset, isVideoPath, kindLabels, assetStatus, type FilmRecord, type RecordKind } from '../model';
 import { librarySections, type LibraryNavigation, type LibrarySection } from '../library-navigation';
-import { errorMessage } from '../storage/vault-records';
+import { errorMessage, type ProjectDeletion } from '../storage/vault-records';
+import { DeleteProjectDialog } from './delete-project-dialog';
 import { Workbench } from './workbench';
 import { RecordInspector } from './record-inspector';
 import { AssetPreparation } from './asset-preparation';
@@ -24,6 +25,7 @@ export function LibraryWorkspace(props: Props) {
   const [nameRequired, setNameRequired] = useState(false);
   const projectNameInput = useRef<HTMLInputElement>(null);
   const [deleting, setDeleting] = useState<FilmRecord | null>(null);
+  const [deletingProject, setDeletingProject] = useState<ProjectDeletion | null>(null);
   const lock = useRef(false), upload = useRef<HTMLInputElement>(null);
   const projects = filmProjects(catalog.records), project = projects.find(p => p.id === location.projectId);
   const local = project ? projectRecords(catalog.records, project.id) : [];
@@ -62,9 +64,11 @@ export function LibraryWorkspace(props: Props) {
   }
   const header = <header className="obcanvas-library-header">
     {project ? <><button disabled={disabled || aiBusy} onClick={() => void run(() => { navigation.update({ projectId: '' }); editor.clearSelection(); setProjectName(''); })}>← 剧本项目库</button><div><h1>{project.title}</h1><p>这个项目的剧本、人物、场景、道具和制作结果，都在这里。</p></div><button disabled={disabled} onClick={() => { setProjectName(project.title); setRenaming(!renaming); }}>修改项目名称</button></> : <div><h1>剧本项目库</h1><p>一部影片，一个项目。进入项目后统一管理剧本和全部拍摄资产。</p></div>}
-    <small>本地资料库 · 0.7.1</small>
+    {project && <button disabled={disabled || aiBusy} onClick={() => void run(async () => setDeletingProject(await records.prepareProjectDeletion(project.id)))}>删除项目</button>}
+    <small>本地资料库 · 0.7.2</small>
   </header>;
   const problem = (error || catalog.problems.length > 0) && <div role="alert" className="obcanvas-alert">{error}{catalog.problems.map(p => <p key={p}>{p}</p>)}<button onClick={() => { setError(''); void records.refresh(); }}>重新读取</button></div>;
+  const projectDialog = deletingProject && <DeleteProjectDialog plan={deletingProject} busy={busy} error={error} cancel={() => { setDeletingProject(null); setError(''); }} confirm={() => void run(async () => { if (extractions.getSnapshot().busy || storyboards.getSnapshot().busy) throw new Error('请先等待 AI 任务结束或取消。'); await records.trashProject(deletingProject); editor.clearSelection(); setDeletingProject(null); navigation.update({ projectId: '', section: 'scripts', scriptId: '' }); setProjectName(''); })} />;
   if (!project) return <section className="obcanvas-library" aria-label="剧本项目库" aria-busy={disabled}>{header}{problem}
     {location.projectId && <p role="alert">原项目暂时无法读取，请恢复项目笔记，或选择下方项目。</p>}
     <div className="obcanvas-library-home"><form className="obcanvas-new-project" onSubmit={e => { e.preventDefault(); if (!projectName.trim()) { setNameRequired(true); projectNameInput.current?.focus(); return; } setNameRequired(false); void run(async () => { const p = await records.create('project', undefined, undefined, projectName); setProjectName(''); navigation.update({ projectId: p.id, section: 'scripts', scriptId: '' }); }); }}>
@@ -72,7 +76,7 @@ export function LibraryWorkspace(props: Props) {
       <p className="obcanvas-new-project-hint" role={nameRequired ? 'alert' : undefined}>{nameRequired ? '请先填写项目名称，再点击新建。' : '先填写项目名称，再点击新建；创建后即可添加剧本和拍摄资产。'}</p>
     </form><div className="obcanvas-project-grid">{projects.map(p => { const list = projectRecords(catalog.records, p.id); return <button key={p.id} className="obcanvas-project-card" disabled={disabled || aiBusy} data-project-id={p.id} onClick={() => enter(p.id)}><strong>{p.title}</strong><span>{list.filter(r => r.kind === 'script').length} 份剧本 · {list.filter(isProductionAsset).length} 项拍摄资产 · {list.filter(r => r.kind === 'shot').length} 个镜头</span><small>进入项目 →</small></button>; })}</div>
     {!catalog.loading && !projects.length && <p>先为你的影片建立一个剧本项目，再放入剧本。</p>}
-    </div></section>;
+    </div>{projectDialog}</section>;
   const inspector = selected && <div className="obcanvas-library-editor" key={selected.id} data-library-record={selected.id}>
     <div className="obcanvas-card-heading"><h2>{kindLabels[selected.kind]} · {selected.title}</h2><button disabled={disabled || aiBusy} onClick={() => void run(async () => setDeleting(await records.requireRecord(selected.id)))}>删除卡片</button></div>
     {isProductionAsset(selected) && <><AssetPreparation key={selected.id} record={selected} records={records} media={media} /><section className="obcanvas-asset-usage"><h3>用于哪些剧本</h3><p>同一资产可用于本项目的多份剧本，描述和参考图共用。</p>{scripts.map(s => { const linked = s.links?.some(l => l.role === '拍摄资产' && l.from === `r:${selected.id}`); return <label key={s.id}><input type="checkbox" aria-label={`用于剧本：${s.title}`} checked={!!linked} disabled={disabled || aiBusy} onChange={() => void run(async () => { if (linked) await records.editLinks(s.id, links => links.filter(l => !(l.role === '拍摄资产' && l.from === `r:${selected.id}`))); else await records.attachScriptAsset(await records.requireRecord(s.id), selected.id); })} />{s.title}</label>; })}{!scripts.length && <p>添加剧本后可在这里关联用途。</p>}</section></>}
@@ -106,5 +110,6 @@ export function LibraryWorkspace(props: Props) {
       </aside><main className="obcanvas-library-detail">{selected && list.some(r => r.id === selected.id) ? inspector : empty}</main></div>}
     </>}
     {deleting && <DeleteCardDialog node={{ id: `r:${deleting.id}`, positionId: deleting.id, title: deleting.title, label: kindLabels[deleting.kind], body: deleting.body, record: deleting }} records={local} busy={busy} error={error} cancel={() => setDeleting(null)} confirm={() => void run(async () => { if (aiBusy) throw new Error('请先等待 AI 任务结束或取消。'); await records.trashCard(deleting); editor.clearSelection(); setDeleting(null); })} />}
+    {projectDialog}
   </section>;
 }

@@ -1,10 +1,11 @@
 import type { Vault, TFile } from 'obsidian';
 import { FilmRecord, Draft, RecordError, ConflictError, newRecord, parseRecord, patchRecord, patchMedia, patchOrder, orderedShots, decideMedia, type MediaRef, type RecordKind, type CardLink, kindLabels, patchLinks } from '../model';
-import { isProductionAsset, patchAssetDetails, type AssetDetails, projectOf, LEGACY_PROJECT_ID } from '../model';
+import { isProductionAsset, patchAssetDetails, type AssetDetails, projectOf, LEGACY_PROJECT_ID, filmProjects, projectRecords } from '../model';
 import type { AssetItem } from '../ai/extraction-model';
 
 export const PROJECT_ROOT = '影视项目';
 export type Catalog = { records: FilmRecord[]; problems: string[]; loading: boolean };
+export type ProjectDeletion = { project: FilmRecord; records: FilmRecord[] };
 type VaultAccess = Pick<Vault, 'getMarkdownFiles' | 'read' | 'process' | 'create' | 'createFolder' | 'getAbstractFileByPath' | 'trash'>;
 export class VaultRecords {
   private snapshot: Catalog = { records: [], problems: [], loading: true };
@@ -53,6 +54,34 @@ export class VaultRecords {
     const record = parseRecord(written, entry.file.path)!;
     await this.refresh();
     return record;
+  }
+  async prepareProjectDeletion(id: string): Promise<ProjectDeletion> {
+    const { entries, problems } = await this.scan();
+    if (problems.length) throw new RecordError('请先修复无法读取或归属异常的记录，再删除项目。');
+    const all = entries.map(e => e.record), project = filmProjects(all).find(p => p.id === id);
+    if (!project) throw new RecordError('项目已移除或无法读取。');
+    return { project, records: projectRecords(all, id).sort((a, b) => a.id.localeCompare(b.id)) };
+  }
+  async trashProject(plan: ProjectDeletion) {
+    const fresh = await this.prepareProjectDeletion(plan.project.id);
+    if (JSON.stringify(fresh) !== JSON.stringify(plan)) throw new ConflictError('项目内容已变化，请取消并重新确认删除范围。');
+    // Remove children before scenes, and the project last, so partial failures retain ownership.
+    const ordered = [...fresh.records.filter(r => r.kind !== 'scene'), ...fresh.records.filter(r => r.kind === 'scene'), ...(fresh.project.path ? [fresh.project] : [])];
+    let removed = 0;
+    try {
+      for (const record of ordered) {
+        const remaining = await this.prepareProjectDeletion(plan.project.id);
+        const removedIds = new Set(ordered.slice(0, removed).map(r => r.id));
+        if (JSON.stringify(remaining) !== JSON.stringify({ project: plan.project, records: plan.records.filter(r => !removedIds.has(r.id)) })) throw new ConflictError('项目内容已变化，已停止删除。');
+        const current = await this.requireRecord(record.id);
+        if (JSON.stringify(current) !== JSON.stringify(record)) throw new ConflictError('笔记已变化，已停止删除。');
+        const file = this.vault.getAbstractFileByPath(current.path);
+        if (!file || !('extension' in file)) throw new RecordError('笔记已移除或移动。');
+        await this.vault.trash(file as TFile, false); removed++;
+      }
+    } catch (error) {
+      throw new RecordError(`已移入回收站 ${removed} / ${ordered.length} 份笔记：${errorMessage(error)} 请取消并重新检查项目后重试；已移除的笔记可从 .trash 恢复。`);
+    } finally { await this.refresh(); }
   }
   async trashCard(base: FilmRecord) {
     if (base.kind === 'scene' || base.kind === 'project') throw new RecordError(`${kindLabels[base.kind]}包含其他卡片，不能通过卡片删除操作移除。`);
