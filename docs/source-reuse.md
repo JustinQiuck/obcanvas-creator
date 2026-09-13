@@ -35,6 +35,8 @@
 | `skills/short-drama-storyboard/references/scene-visual-plan.md` | `404b7634d0947335d69f0ee93b7df11aab530865c66c97d9510f58d5423377c6` | 观众立场、空间压力、揭示时机和声音策略 |
 | `LICENSE` | `840bdb5ba503ca4397f5a6049e6e8da182330f83bb70006d5656d7dd00674e9b` | 原样保存到 `licenses/drama-skills-MIT.txt` |
 
-本地 `skills/drama-storyboard/SKILL.md` 是 6,511 字节的中文适配包，SHA-256 为 `03fe97b444fbd46cf47df7571e2c155ef48649d8050f0549792d8079a439806c`。它删除上游文件路径、ID、Agent 工具和多文件交付假设，补入当前产品的 JSON 输入、独立预览、交叉剪辑、成年亲密叙事的画外克制表达及 `TBD` 规则；宿主在 `src/ai/storyboard-skill.ts` 追加固定输出协议。构建产物同时内嵌 Drama Skills MIT 文本，并随安装包复制独立许可文件。
+本地 `skills/drama-storyboard/SKILL.md` 是 4,674 字节的中文适配包，SHA-256 为 `86cc7f17d768b302977917eab73f9486a18a1b9d9aada2e8d6a3640464213a9c`。它删除上游文件路径、ID、Agent 工具和多文件交付假设，补入当前产品的 JSON 输入、独立预览、交叉剪辑、成年亲密叙事的画外克制表达及 `TBD` 规则；宿主在 `src/ai/storyboard-skill.ts` 追加固定输出协议。构建产物同时内嵌 Drama Skills MIT 文本，并随安装包复制独立许可文件。
 
 2026-09-14 开发候选版本为 `upstream-4c40ca-adapt-2`，本地增加逐镜决策、未知光线、静态构图与持物连续性核对；来源上游提交不变。这是本项目的规则修正，真实质量仍未通过，见 [GS01a 验证](validation/storyboard-gs01a.md)。
+
+继续验证后的候选为 `upstream-4c40ca-adapt-4`：区分资产事实与导演提案，精简重复规则，增加独立阅读场景的完整字段示例；保留原文、时长、画外克制表达和确认边界。adapt-3、adapt-4 的真实复测见 [GS01a 后续验证](validation/storyboard-gs01a-followup.md)，仍未通过全部质量门槛。

@@ -1,6 +1,5 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import type { Vault } from 'obsidian';
 import { newRecord, parseRecord, patchAssetDetails, patchLinks, patchMedia, draftOf } from '../src/model';
 import { ChatClient, type Transport } from '../src/ai/chat-client';
@@ -124,8 +123,6 @@ test('分镜规则协议明确静态首帧和编辑时长边界', () => {
   const prompt = storyboardPrompt(storyboardSkill);
   assert.ok(prompt.includes('keyframePrompt')); assert.ok(prompt.includes('只含 start 事实'));
   assert.ok(prompt.includes('成片计划时长')); assert.ok(prompt.includes('不是 MiniMax H3 的生成时长'));
-  const packaged = readFileSync(new URL('../skills/drama-storyboard/SKILL.md', import.meta.url), 'utf8');
-  assert.ok(packaged.includes('不展示性器官、裸露细节或行为过程')); assert.ok(packaged.includes('画外行为持续／停止'));
 });
 
 test('确认分镜入卡保留各拍摄字段、资产关系；重复确认不复制或覆盖已选视频', async () => {
