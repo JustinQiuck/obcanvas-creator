@@ -42,13 +42,14 @@ export function shotStatus(shot: FilmRecord) {
 }
 export function orderedShots(scene: FilmRecord | undefined, records: FilmRecord[]) {
   const shots = records.filter(r => r.kind === 'shot' && r.sceneId === scene?.id);
-  const ranks = new Map((scene?.shotOrder ?? []).map((id, i) => [id, i]));
+  const project = scene && records.find(r => r.kind === 'project' && r.id === projectOf(scene, records));
+  const ranks = new Map((project?.editOrder ?? scene?.shotOrder ?? []).map((id, i) => [id, i]));
   return shots.sort((a, b) => (ranks.get(a.id) ?? Infinity) - (ranks.get(b.id) ?? Infinity) || a.id.localeCompare(b.id));
 }
 export function validMediaPath(path: string) { return !!path && !/^(?:[a-z]+:|\/)/i.test(path) && !path.includes('\\') && !path.split('/').some(p => !p || p === '.' || p === '..') && !/[\x00-\x1f]/.test(path); }
 export type FilmRecord = Planning & {
   id: string; kind: RecordKind; version: 1; title: string; body: string;
-  sceneId?: string; projectId?: string; path: string; media?: MediaRef[]; shotOrder?: string[]; links?: CardLink[]; assetDetails?: AssetDetails;
+  sceneId?: string; projectId?: string; path: string; media?: MediaRef[]; shotOrder?: string[]; editOrder?: string[]; links?: CardLink[]; assetDetails?: AssetDetails;
 };
 export type Draft = Pick<FilmRecord, 'title' | 'body'> & Planning;
 export function draftOf(record: FilmRecord): Draft { return Object.fromEntries(draftFields.map(f => [f, record[f] ?? ''])) as Draft; }
@@ -84,9 +85,10 @@ export function parseRecord(source: string, path: string): FilmRecord | null {
   if (meta.assetDetails !== undefined && (!(productionKinds as readonly unknown[]).includes(meta.kind) || !object(meta.assetDetails) || ![meta.assetDetails.unresolved, meta.assetDetails.needs].every(list => Array.isArray(list) && list.length <= 50 && list.every(s => typeof s === 'string' && !!s.trim() && s.length <= 1000)) || !(meta.assetDetails.needs as unknown[]).length)) throw new RecordError('资产需求格式无效，请保留原笔记。');
   if (((meta.media ?? []) as MediaRef[]).filter(m => m.decision === 'adopted').length > 1) throw new RecordError('一个镜头只能采用一份视频，请检查笔记。');
   if (meta.shotOrder !== undefined && (!Array.isArray(meta.shotOrder) || !meta.shotOrder.every(id => typeof id === 'string' && !!id) || new Set(meta.shotOrder).size !== meta.shotOrder.length)) throw new RecordError('镜头顺序格式无效，请检查场次笔记。');
+  if (meta.editOrder !== undefined && (meta.kind !== 'project' || !Array.isArray(meta.editOrder) || !meta.editOrder.every(id => typeof id === 'string' && !!id.trim()) || new Set(meta.editOrder).size !== meta.editOrder.length)) throw new RecordError('全片顺序必须是项目中的不重复镜头编号列表。');
   for (const field of planningFields) if (meta[field] !== undefined && typeof meta[field] !== 'string') throw new RecordError('镜头规划字段必须是文字。');
   if (meta.plannedDuration !== undefined && meta.plannedDuration !== '' && (!Number.isFinite(Number(meta.plannedDuration)) || Number(meta.plannedDuration) <= 0 || Number(meta.plannedDuration) > 120)) throw new RecordError('计划剪辑时长必须是大于 0 且不超过 120 的秒数。');
-  return { id: meta.id, kind: meta.kind as RecordKind, version: 1, title: meta.title, body: note.body, path, ...Object.fromEntries(planningFields.filter(f => meta[f] !== undefined).map(f => [f, meta[f]])), ...(meta.shotOrder ? { shotOrder: meta.shotOrder as string[] } : {}), ...(meta.media ? { media: meta.media as MediaRef[] } : {}), ...(typeof meta.sceneId === 'string' ? { sceneId: meta.sceneId } : {}), ...(typeof meta.projectId === 'string' ? { projectId: meta.projectId } : {}), ...(meta.links ? { links: meta.links as CardLink[] } : {}), ...(meta.assetDetails ? { assetDetails: meta.assetDetails as AssetDetails } : {}) };
+  return { id: meta.id, kind: meta.kind as RecordKind, version: 1, title: meta.title, body: note.body, path, ...Object.fromEntries(planningFields.filter(f => meta[f] !== undefined).map(f => [f, meta[f]])), ...(meta.shotOrder ? { shotOrder: meta.shotOrder as string[] } : {}), ...(meta.editOrder !== undefined ? { editOrder: meta.editOrder as string[] } : {}), ...(meta.media ? { media: meta.media as MediaRef[] } : {}), ...(typeof meta.sceneId === 'string' ? { sceneId: meta.sceneId } : {}), ...(typeof meta.projectId === 'string' ? { projectId: meta.projectId } : {}), ...(meta.links ? { links: meta.links as CardLink[] } : {}), ...(meta.assetDetails ? { assetDetails: meta.assetDetails as AssetDetails } : {}) };
 }
 export function patchMedia(source: string, shotId: string, edit: (items: MediaRef[]) => MediaRef[]) {
   const latest = parseRecord(source, '');
@@ -148,6 +150,14 @@ export function patchOrder(source: string, sceneId: string, edit: (ids: string[]
   const next = edit(scene.shotOrder ?? []);
   const note = splitNote(source)!;
   note.document.setIn(['obcanvas', 'shotOrder'], next);
+  const result = `${note.bom}---${note.eol}${note.document.toString().replace(/\n/g, note.eol)}---${note.eol}${note.body}`;
+  parseRecord(result, ''); return result;
+}
+export function patchProjectOrder(source: string, projectId: string, expected: string[] | undefined, next: string[]) {
+  const project = parseRecord(source, '');
+  if (!project || project.kind !== 'project' || project.id !== projectId || JSON.stringify(project.editOrder) !== JSON.stringify(expected)) throw new ConflictError('全片顺序已被其他窗口修改，请放弃本次草案并重新读取。');
+  const note = splitNote(source)!;
+  note.document.setIn(['obcanvas', 'editOrder'], next);
   const result = `${note.bom}---${note.eol}${note.document.toString().replace(/\n/g, note.eol)}---${note.eol}${note.body}`;
   parseRecord(result, ''); return result;
 }

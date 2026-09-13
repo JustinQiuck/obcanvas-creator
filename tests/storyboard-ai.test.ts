@@ -162,6 +162,15 @@ test('入卡前再次检查剧本文字，检查后变更不能写入新镜头',
   await assert.rejects(records.ensureStoryboardShot(before, task.items[0]!, task.id, crypto.randomUUID(), false), /入卡检查后已更新/);
   assert.equal(records.getSnapshot().records.some(r => r.kind === 'shot'), false); service.dispose();
 });
+test('启用全片顺序后正式入卡保留待排位置，重复应用不会重复创建或改旧顺序', async () => {
+  const { service, records } = await setup();
+  await records.saveProjectOrder(await records.prepareProjectOrder('legacy-project'));
+  await service.start('script-a', 'view'); await service.apply(service.getSnapshot().tasks[0]!);
+  const task = service.getSnapshot().tasks[0]!; await service.apply(task);
+  assert.equal(records.getSnapshot().records.filter(r => r.kind === 'shot').length, 1);
+  assert.deepEqual((await records.requireRecord('legacy-project')).editOrder, []);
+  assert.equal((await records.requireRecord('scene-a')).shotOrder, undefined); service.dispose();
+});
 
 test('已保存的第一镜删除后，部分任务恢复不会重建它；保留后续已写内容', async () => {
   const two: Transport = async () => ({ status: 200, text: JSON.stringify({ choices: [{ message: { content: JSON.stringify({ shots: [shot, { ...shot, title: '第二镜' }] }) } }] }) });

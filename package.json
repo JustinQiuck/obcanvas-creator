@@ -30,7 +30,9 @@
     "test:projects": "node scripts/test-projects.mjs",
     "test:projects:reopen": "node scripts/test-projects.mjs --reopen",
     "test:storyboard-apply": "node scripts/test-storyboard-apply.mjs",
-    "test:storyboard-apply:reopen": "node scripts/test-storyboard-apply.mjs --reopen"
+    "test:storyboard-apply:reopen": "node scripts/test-storyboard-apply.mjs --reopen",
+    "test:project-order": "node scripts/test-project-order.mjs",
+    "test:project-order:reopen": "node scripts/test-project-order.mjs --reopen"
   },
   "dependencies": {
     "react": "19.3.0",

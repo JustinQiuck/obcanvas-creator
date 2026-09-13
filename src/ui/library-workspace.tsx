@@ -9,6 +9,7 @@ import { Workbench } from './workbench';
 import { RecordInspector } from './record-inspector';
 import { AssetPreparation } from './asset-preparation';
 import { ExtractionPanel } from './extraction-panel';
+import { ProjectOrderPanel } from './project-order-panel';
 import { StoryboardPanel } from './storyboard-panel';
 import { DeleteCardDialog } from './delete-card-dialog';
 
@@ -26,6 +27,7 @@ export function LibraryWorkspace(props: Props) {
   const [projectName, setProjectName] = useState(''), [renaming, setRenaming] = useState(false);
   const [nameRequired, setNameRequired] = useState(false);
   const [storyboardOptionsDirty, setStoryboardOptionsDirty] = useState(false);
+  const [orderDirty, setOrderDirty] = useState(false);
   const projectNameInput = useRef<HTMLInputElement>(null);
   const [deleting, setDeleting] = useState<FilmRecord | null>(null);
   const [deletingProject, setDeletingProject] = useState<ProjectDeletion | null>(null);
@@ -44,6 +46,7 @@ export function LibraryWorkspace(props: Props) {
     if (lock.current || editor.getSnapshot().saving) return;
     lock.current = true; setBusy(true); setError('');
     try {
+      if (orderDirty) throw new Error('全片顺序草案尚未确认，请保存或放弃后再切换。');
       if (storyboardOptionsDirty) throw new Error('分镜方法与方向有未保存修改，请先保存或放弃修改再切换。');
       if (editor.getSnapshot().dirty) { await editor.save(); if (editor.getSnapshot().dirty) throw new Error('当前内容尚未保存，请先处理编辑区中的提示。'); }
       await extractions.flushDrafts(); await storyboards.flushDrafts();
@@ -106,7 +109,8 @@ export function LibraryWorkspace(props: Props) {
         {location.section === 'media' && <><button disabled={disabled} onClick={() => upload.current?.click()}>导入图片 / 视频</button><input className="obcanvas-file-input" ref={upload} type="file" multiple accept="image/*,video/*" aria-label="导入项目素材" onChange={e => { const files = Array.from(e.target.files ?? []); e.target.value = ''; void run(async () => { for (const file of files) { if (!/\.(png|jpe?g|webp|gif|avif|mp4|webm|mov|m4v|ogv)$/i.test(file.name) || file.size > 256 * 1024 * 1024) throw new Error('请选择 256 MB 内的图片或视频。'); } for (const file of files) { const r = await records.create('asset', undefined, project.id, file.name); await media.importFile(r.id, file); editor.select(r.id); } }); }} /></>}
       </div>
       {location.section === 'storyboard' || location.section === 'assets' && assetMode === 'extract' ? <main className="obcanvas-task-workspace">
-        {!script ? <p>项目中还没有剧本。<button onClick={() => go('scripts')}>去添加剧本</button></p> : location.section === 'storyboard' ? <StoryboardPanel onOptionsDirty={setStoryboardOptionsDirty} key={script.id} script={script} records={local} service={storyboards} blocked={extraction.busy} start={() => void run(() => { void storyboards.start(script.id, owner).catch(() => {}); })} /> : <ExtractionPanel key={script.id} skills={skills} script={script} records={local} service={extractions} blocked={storyboard.busy} start={() => void run(() => { void extractions.start(script.id, owner, skills.resolve(script.id, project.id)).catch(() => {}); })} apply={() => void run(async () => { const task = extractions.getSnapshot().tasks.find(t => t.scriptId === script.id); if (task) await extractions.apply(task); })} openAsset={id => { const asset = local.find(r => r.id === id); if (asset) void run(() => { setAssetMode('browse'); setQuery(''); setFilter('all'); editor.select(id); }); }} />}
+        {location.section === 'storyboard' && <ProjectOrderPanel key={project.id} project={project} records={records} blocked={disabled || aiBusy || storyboardOptionsDirty} onDirty={setOrderDirty} />}
+        {!script ? <p>项目中还没有剧本。<button onClick={() => go('scripts')}>去添加剧本</button></p> : location.section === 'storyboard' ? <StoryboardPanel onOptionsDirty={setStoryboardOptionsDirty} key={script.id} script={script} records={local} service={storyboards} blocked={extraction.busy || orderDirty} start={() => void run(() => { void storyboards.start(script.id, owner).catch(() => {}); })} /> : <ExtractionPanel key={script.id} skills={skills} script={script} records={local} service={extractions} blocked={storyboard.busy} start={() => void run(() => { void extractions.start(script.id, owner, skills.resolve(script.id, project.id)).catch(() => {}); })} apply={() => void run(async () => { const task = extractions.getSnapshot().tasks.find(t => t.scriptId === script.id); if (task) await extractions.apply(task); })} openAsset={id => { const asset = local.find(r => r.id === id); if (asset) void run(() => { setAssetMode('browse'); setQuery(''); setFilter('all'); editor.select(id); }); }} />}
       </main> : <div className="obcanvas-library-split"><aside className="obcanvas-library-list" aria-label="项目内容列表">
         <input aria-label="搜索项目内容" placeholder="搜索名称…" value={query} onChange={e => setQuery(e.target.value)} />
         {location.section === 'assets' && <div className="obcanvas-asset-filters" role="group" aria-label="资产分类">{[['all', '全部'], ['person', '人物'], ['setting', '场景'], ['prop', '道具']].map(([id, label]) => <button key={id} aria-pressed={filter === id} onClick={() => setFilter(id!)}>{label} {id === 'all' ? assets.length : assets.filter(a => a.kind === id).length}</button>)}</div>}

@@ -2,6 +2,8 @@ import type { Vault, TFile } from 'obsidian';
 import { FilmRecord, Draft, RecordError, ConflictError, newRecord, parseRecord, patchRecord, patchMedia, patchOrder, orderedShots, decideMedia, type MediaRef, type RecordKind, type CardLink, kindLabels, patchLinks } from '../model';
 import { isProductionAsset, patchAssetDetails, type AssetDetails, projectOf, LEGACY_PROJECT_ID, filmProjects, projectRecords } from '../model';
 import type { AssetItem } from '../ai/extraction-model';
+import { patchProjectOrder } from '../model';
+import { initialProjectOrder, projectOrderScope, type ProjectOrderDraft } from '../project-order';
 
 export const PROJECT_ROOT = '影视项目';
 export type Catalog = { records: FilmRecord[]; problems: string[]; loading: boolean };
@@ -32,6 +34,10 @@ export class VaultRecords {
     }
     entries.forEach(e => counts.set(e.record.id, (counts.get(e.record.id) ?? 0) + 1));
     for (const [id, count] of counts) if (count > 1) problems.push(`编号 ${id} 出现重复，请修复后再编辑。`);
+    for (const { record } of entries.filter(e => e.record.kind === 'project')) for (const id of record.editOrder ?? []) {
+      const target = entries.find(e => e.record.id === id)?.record;
+      if (target && (target.kind !== 'shot' || projectOf(target, entries.map(e => e.record)) !== record.id)) problems.push(`${record.path}：全片顺序引用了其他项目或非镜头记录，请修复。`);
+    }
     return { entries: entries.filter(e => counts.get(e.record.id) === 1), problems };
   }
   async refresh() {
@@ -241,6 +247,9 @@ export class VaultRecords {
     const { entries } = await this.scan();
     const scene = entries.find(e => e.record.id === sceneId && e.record.kind === 'scene');
     if (!scene) throw new RecordError('所属场次无法读取。');
+    const project = entries.find(e => e.record.kind === 'project' && e.record.id === projectOf(scene.record))?.record;
+    // Once project order is enabled, new shots wait for explicit placement.
+    if (project?.editOrder !== undefined) { await this.refresh(); return; }
     const existing = orderedShots(scene.record, entries.map(e => e.record)).filter(r => r.id !== id).map(r => r.id);
     await this.vault.process(scene.file, raw => patchOrder(raw, sceneId, ids => [...new Set([...ids, ...existing, id])]));
     await this.refresh();
@@ -249,6 +258,7 @@ export class VaultRecords {
     const { entries } = await this.scan();
     const scene = entries.find(e => e.record.id === base.id && e.record.kind === 'scene');
     if (!scene) throw new RecordError('场次无法读取。');
+    if (entries.some(e => e.record.kind === 'project' && e.record.id === projectOf(scene.record) && e.record.editOrder !== undefined)) throw new RecordError('全片顺序已启用，请在分镜工作区调整；场次顺序仅作投影。');
     const shots = orderedShots(scene.record, entries.map(e => e.record)).map(r => r.id);
     const index = shots.indexOf(shotId), target = index + direction;
     if (index < 0 || target < 0 || target >= shots.length) throw new RecordError('镜头位置已变化，请检查最新列表。');
@@ -257,6 +267,34 @@ export class VaultRecords {
       if (JSON.stringify(ids) !== JSON.stringify(base.shotOrder ?? [])) throw new ConflictError('镜头顺序已被其他窗口修改，请检查最新顺序后重试。');
       return [...shots, ...ids.filter(id => !shots.includes(id))];
     }));
+    await this.refresh();
+  }
+  async prepareProjectOrder(projectId: string): Promise<ProjectOrderDraft> {
+    const { entries, problems } = await this.scan();
+    if (problems.length) throw new RecordError('请先修复无法读取或归属异常的项目记录。');
+    const all = entries.map(e => e.record), project = filmProjects(all).find(r => r.id === projectId);
+    if (!project) throw new RecordError('剧本项目已移除或无法读取。');
+    return { project, scope: projectOrderScope(project, all), ids: initialProjectOrder(project, all) };
+  }
+  async saveProjectOrder(draft: ProjectOrderDraft) {
+    const fresh = await this.prepareProjectOrder(draft.project.id);
+    if (fresh.scope !== draft.scope || JSON.stringify(fresh.project.editOrder) !== JSON.stringify(draft.project.editOrder) || fresh.project.path !== draft.project.path) throw new ConflictError('全片顺序、场次或镜头成员已变化，本次草案保留，请放弃后重新整理。');
+    const { entries, problems } = await this.scan(), all = entries.map(e => e.record);
+    if (problems.length || projectOrderScope(fresh.project, all) !== draft.scope) throw new ConflictError('镜头成员已变化，请重新整理顺序。');
+    const existing = new Map(all.map(r => [r.id, r]));
+    if (new Set(draft.ids).size !== draft.ids.length || draft.ids.some(id => {
+      const shot = existing.get(id);
+      return shot ? shot.kind !== 'shot' || projectOf(shot, all) !== draft.project.id : !draft.project.editOrder?.includes(id);
+    })) throw new RecordError('全片顺序只能包含本项目镜头，不能重复或添加未知编号。');
+    if (draft.project.editOrder?.some(id => !existing.has(id) && !draft.ids.includes(id))) throw new RecordError('请保留缺失镜头的位置，以便恢复原笔记。');
+    if (!fresh.project.path) {
+      if (fresh.project.id !== LEGACY_PROJECT_ID) throw new RecordError('项目笔记不存在。');
+      await this.vault.create(`${PROJECT_ROOT}/原有剧本项目.md`, patchProjectOrder(newRecord('project', LEGACY_PROJECT_ID, fresh.project.title), LEGACY_PROJECT_ID, undefined, draft.ids));
+    } else {
+      const file = this.vault.getAbstractFileByPath(fresh.project.path);
+      if (!file || !('extension' in file)) throw new RecordError('项目笔记已移除。');
+      await this.vault.process(file as TFile, raw => patchProjectOrder(raw, draft.project.id, draft.project.editOrder, draft.ids));
+    }
     await this.refresh();
   }
   async decide(base: FilmRecord, mediaId: string, decision: NonNullable<MediaRef['decision']>, reason?: string) {
