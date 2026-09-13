@@ -29,7 +29,7 @@ export function assetStatus(record: FilmRecord, available: (m: MediaRef) => bool
   if (needs.every(p => images.some(m => m.purpose === p && m.confirmed && available(m)))) return '已绑定参考图';
   return images.length ? '待检查参考图' : '待准备参考图';
 }
-export const planningFields = ['intent', 'framing', 'camera', 'prompt', 'source'] as const;
+export const planningFields = ['intent', 'framing', 'camera', 'prompt', 'source', 'start', 'end', 'sound', 'keyframePrompt', 'plannedDuration'] as const;
 export const draftFields = ['title', 'body', ...planningFields] as const;
 export type Planning = Partial<Record<typeof planningFields[number], string>>;
 export function isVideoPath(path: string) { return /\.(mp4|webm|mov|m4v|ogv)$/i.test(path); }
@@ -85,6 +85,7 @@ export function parseRecord(source: string, path: string): FilmRecord | null {
   if (((meta.media ?? []) as MediaRef[]).filter(m => m.decision === 'adopted').length > 1) throw new RecordError('一个镜头只能采用一份视频，请检查笔记。');
   if (meta.shotOrder !== undefined && (!Array.isArray(meta.shotOrder) || !meta.shotOrder.every(id => typeof id === 'string' && !!id) || new Set(meta.shotOrder).size !== meta.shotOrder.length)) throw new RecordError('镜头顺序格式无效，请检查场次笔记。');
   for (const field of planningFields) if (meta[field] !== undefined && typeof meta[field] !== 'string') throw new RecordError('镜头规划字段必须是文字。');
+  if (meta.plannedDuration !== undefined && meta.plannedDuration !== '' && (!Number.isFinite(Number(meta.plannedDuration)) || Number(meta.plannedDuration) <= 0 || Number(meta.plannedDuration) > 120)) throw new RecordError('计划剪辑时长必须是大于 0 且不超过 120 的秒数。');
   return { id: meta.id, kind: meta.kind as RecordKind, version: 1, title: meta.title, body: note.body, path, ...Object.fromEntries(planningFields.filter(f => meta[f] !== undefined).map(f => [f, meta[f]])), ...(meta.shotOrder ? { shotOrder: meta.shotOrder as string[] } : {}), ...(meta.media ? { media: meta.media as MediaRef[] } : {}), ...(typeof meta.sceneId === 'string' ? { sceneId: meta.sceneId } : {}), ...(typeof meta.projectId === 'string' ? { projectId: meta.projectId } : {}), ...(meta.links ? { links: meta.links as CardLink[] } : {}), ...(meta.assetDetails ? { assetDetails: meta.assetDetails as AssetDetails } : {}) };
 }
 export function patchMedia(source: string, shotId: string, edit: (items: MediaRef[]) => MediaRef[]) {

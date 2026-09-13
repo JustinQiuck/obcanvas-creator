@@ -11,7 +11,10 @@ export function RecordInspector({ record, state, editor, media, openNote, busy }
       <label>拍摄理由<input aria-label="拍摄理由" value={state.draft.intent ?? ''} onChange={e => editor.edit('intent', e.target.value)} /></label>
       <label>景别<select aria-label="景别" value={state.draft.framing ?? ''} onChange={e => editor.edit('framing', e.target.value)}><option value="">待确定</option>{[...new Set(['远景', '全景', '中景', '近景', '特写', ...(state.draft.framing ? [state.draft.framing] : [])])].map(s => <option key={s}>{s}</option>)}</select></label>
       <label>机位与运动<input aria-label="机位与运动" value={state.draft.camera ?? ''} onChange={e => editor.edit('camera', e.target.value)} /></label>
-      <p className="obcanvas-hint">当前可记录或粘贴已有分镜分析，尚未接入 AI 拆镜。</p>
+      <p className="obcanvas-hint">分镜工作区确认后会保存这些字段；修改正式镜头不会反向覆盖历史预览。</p>
+    </details>}
+    {record.kind === 'shot' && <details><summary>起止状态、声音与关键帧</summary>
+      {([['start', '起点'], ['end', '终点'], ['sound', '声音'], ['keyframePrompt', '静态起始关键帧提示词'], ['plannedDuration', '计划剪辑时长（秒）']] as const).map(([field, label]) => <label key={field}>{label}<textarea aria-label={`正式镜头${label}`} value={state.draft[field] ?? ''} onChange={e => editor.edit(field, e.target.value)} /></label>)}
     </details>}
     {record.kind !== 'script' && <details><summary>提示词与来源（可选）</summary><label>原提示词<textarea aria-label="原提示词" rows={4} value={state.draft.prompt ?? ''} onChange={e => editor.edit('prompt', e.target.value)} /></label><label>来源备注<input aria-label="来源备注" value={state.draft.source ?? ''} onChange={e => editor.edit('source', e.target.value)} /></label></details>}
     {state.message && <p role={['error', 'conflict'].includes(state.status) ? 'alert' : 'status'}>{state.message}</p>}

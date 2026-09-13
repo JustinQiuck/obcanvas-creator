@@ -10,6 +10,7 @@ import { ExtractionService } from './ai/extraction-service';
 import { assetSkill, builtinAssetSkills } from './ai/skills';
 import { VaultSkills, SKILLS_PATH } from './storage/vault-skills';
 import { AISettingsTab } from './ui/ai-settings';
+import { VaultStoryboardSettings, STORYBOARD_SETTINGS_PATH } from './storage/vault-storyboard-settings';
 import { StoryboardService } from './ai/storyboard-service';
 import { storyboardSkill } from './ai/storyboard-skills';
 import { STORYBOARDS_ROOT, VaultStoryboards } from './storage/vault-storyboards';
@@ -27,6 +28,7 @@ export default class ObCanvasPlugin extends Plugin {
   chat = new ChatClient(async request => { const r = await requestUrl({ ...request, throw: false }); return { status: r.status, text: r.text }; });
   extractions!: ExtractionService;
   storyboards!: StoryboardService;
+  storyboardSettings!: VaultStoryboardSettings;
   skills!: VaultSkills;
   private ready = false;
   private drafts = new Map<string, Recovery>();
@@ -49,7 +51,8 @@ export default class ObCanvasPlugin extends Plugin {
     this.layout = new VaultLayout(this.app.vault);
     this.media = new VaultMedia(this.app, this.records);
     this.extractions = new ExtractionService(this.records, new VaultExtractions(this.app.vault), this.chat, () => this.aiSettings, settings => this.getAISecret('id' in settings ? String(settings.id) : undefined), assetSkill);
-    this.storyboards = new StoryboardService(this.records, new VaultStoryboards(this.app.vault), this.chat, () => this.aiSettings, settings => this.getAISecret('id' in settings ? String(settings.id) : undefined), storyboardSkill);
+    this.storyboardSettings = new VaultStoryboardSettings(this.app.vault, storyboardSkill);
+    this.storyboards = new StoryboardService(this.records, new VaultStoryboards(this.app.vault), this.chat, () => this.aiSettings, settings => this.getAISecret('id' in settings ? String(settings.id) : undefined), storyboardSkill, this.storyboardSettings);
     this.addSettingTab(new AISettingsTab(this.app, this));
     this.ready = true;
     this.registerView(VIEW_TYPE, leaf => new FilmView(leaf, this));
@@ -57,6 +60,7 @@ export default class ObCanvasPlugin extends Plugin {
     this.addCommand({ id: 'open-film-view', name: '打开影视画布', callback: () => { void this.openView(); } });
     this.addCommand({ id: 'open-another-film-view', name: '在新标签页打开影视画布', callback: () => { void this.openView(true); } });
     const changed = (file: TAbstractFile) => {
+      if (file.path === STORYBOARD_SETTINGS_PATH || file.path === PROJECT_ROOT) void this.storyboardSettings.refresh();
       if (file.path === SKILLS_PATH || file.path === PROJECT_ROOT) void this.skills.refresh();
       if (file.path.startsWith(EXTRACTIONS_ROOT + '/')) { void this.extractions.refresh(); return; }
       if (file.path.startsWith(STORYBOARDS_ROOT + '/')) { void this.storyboards.refresh(); return; }
@@ -68,13 +72,14 @@ export default class ObCanvasPlugin extends Plugin {
     this.registerEvent(this.app.vault.on('modify', changed));
     this.registerEvent(this.app.vault.on('delete', changed));
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
+      if ([file.path, oldPath].includes(STORYBOARD_SETTINGS_PATH)) void this.storyboardSettings.refresh();
       if ([file.path, oldPath].some(p => p === PROJECT_ROOT || p.startsWith(PROJECT_ROOT + '/'))) void this.records.refresh();
       if ([file.path, oldPath].some(p => p === SKILLS_PATH || p === PROJECT_ROOT)) void this.skills.refresh();
       if ([file.path, oldPath].some(p => p.startsWith(STORYBOARDS_ROOT + '/'))) void this.storyboards.refresh();
       if (file.path === LAYOUT_PATH || oldPath === LAYOUT_PATH) void this.layout.refresh();
       void this.media.renamed(file.path, oldPath).catch(e => new Notice(`素材位置更新失败：${errorMessage(e)}。请在镜头中重新关联。`));
     }));
-    this.app.workspace.onLayoutReady(() => { void this.records.refresh(); void this.layout.refresh(); void this.extractions.refresh(); void this.storyboards.refresh(); void this.skills.refresh(); });
+    this.app.workspace.onLayoutReady(() => { void this.records.refresh(); void this.layout.refresh(); void this.extractions.refresh(); void this.storyboards.refresh(); void this.skills.refresh(); void this.storyboardSettings.refresh(); });
   }
   async openView(newTab = false) {
     let leaf = newTab ? undefined : this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
@@ -132,6 +137,7 @@ export default class ObCanvasPlugin extends Plugin {
     if (!this.ready) return;
     this.extractions.cancel();
     void this.extractions.flushDrafts().catch(() => {}).finally(() => this.extractions.dispose());
+    this.storyboardSettings.dispose();
     this.storyboards.cancel();
     void this.storyboards.flushDrafts().catch(() => {}).finally(() => this.storyboards.dispose());
     this.app.workspace.detachLeavesOfType(VIEW_TYPE);

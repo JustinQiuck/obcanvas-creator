@@ -28,7 +28,9 @@ export type StoryboardTask = {
   createdAt: string;
   model: string;
   skill: StoryboardSkill & { prompt: string };
-  status: 'review';
+  status: 'review' | 'applying' | 'partial' | 'complete';
+  direction?: { skillId: string; format: 'drama' | 'mv'; direction: string; musicTiming: string };
+  application?: { itemId: string; shotId: string; applied: boolean }[];
   items: StoryboardItem[];
   issues?: string[];
 };
@@ -117,11 +119,15 @@ function validSkill(value: unknown): value is StoryboardTask['skill'] {
 
 export function parseStoryboardTask(raw: string): StoryboardTask {
   const value: unknown = JSON.parse(raw);
-  if (!obj(value) || value.version !== 1 || !taskIdValid(value.id) || !Number.isInteger(value.revision) || (value.revision as number) < 0 || !text(value.scriptId, 500) || !text(value.sceneId, 500) || typeof value.inputVersion !== 'string' || !/^[a-f0-9]{64}$/.test(value.inputVersion) || !text(value.scriptText, 40000) || !text(value.createdAt, 100) || !text(value.model, 250) || value.status !== 'review' || !validSkill(value.skill) || !Array.isArray(value.items) || value.items.length > 60) throw new Error('分镜预览草稿格式损坏，已保留原文件。');
+  if (!obj(value) || value.version !== 1 || !taskIdValid(value.id) || !Number.isInteger(value.revision) || (value.revision as number) < 0 || !text(value.scriptId, 500) || !text(value.sceneId, 500) || typeof value.inputVersion !== 'string' || !/^[a-f0-9]{64}$/.test(value.inputVersion) || !text(value.scriptText, 40000) || !text(value.createdAt, 100) || !text(value.model, 250) || !['review', 'applying', 'partial', 'complete'].includes(String(value.status)) || !validSkill(value.skill) || !Array.isArray(value.items) || value.items.length > 60) throw new Error('分镜预览草稿格式损坏，已保留原文件。');
   if (value.issues !== undefined && (!Array.isArray(value.issues) || value.issues.length > 60 || !value.issues.every(issue => text(issue, 1000)))) throw new Error('分镜预览问题记录格式损坏，已保留原文件。');
   for (const item of value.items) {
     if (!obj(item) || !taskIdValid(item.id) || !text(item.title, 250) || !text(item.evidence, 3000) || !(value.scriptText as string).includes(item.evidence) || !['intent', 'framing', 'camera', 'start', 'action', 'end', 'sound', 'keyframePrompt'].every(field => text(item[field], 6000)) || typeof item.plannedDurationSeconds !== 'number' || !Number.isFinite(item.plannedDurationSeconds) || item.plannedDurationSeconds <= 0 || item.plannedDurationSeconds > 120) throw new Error('分镜预览条目格式损坏，已保留原文件。');
   }
   if (new Set(value.items.map(item => item.id)).size !== value.items.length) throw new Error('分镜预览草稿含有重复编号。');
+  if (value.direction !== undefined && (!obj(value.direction) || !text(value.direction.skillId, 80) || !['drama', 'mv'].includes(String(value.direction.format)) || !text(value.direction.direction, 4000, true) || !text(value.direction.musicTiming, 4000, true))) throw new Error('分镜作品方向格式损坏。');
+  if (value.application !== undefined && (!Array.isArray(value.application) || value.application.length !== value.items.length || !value.application.every((entry, index) => obj(entry) && entry.itemId === (value.items as StoryboardItem[])[index]?.id && taskIdValid(entry.shotId) && typeof entry.applied === 'boolean') || new Set(value.application.map(entry => entry.shotId)).size !== value.application.length)) throw new Error('分镜入卡映射格式损坏。');
+  if (value.status !== 'review' && (!Array.isArray(value.application) || !value.application.length || (value.status === 'complete' && value.application.some(entry => !entry.applied)))) throw new Error('分镜应用进度格式损坏。');
+  if (value.status === 'review' && value.application !== undefined) throw new Error('预览不能带有已冻结的入卡映射。');
   return value as StoryboardTask;
 }

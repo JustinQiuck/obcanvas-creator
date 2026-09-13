@@ -28,7 +28,9 @@
     "test:storyboard": "node scripts/test-storyboard.mjs",
     "test:storyboard:reopen": "node scripts/test-storyboard.mjs --reopen",
     "test:projects": "node scripts/test-projects.mjs",
-    "test:projects:reopen": "node scripts/test-projects.mjs --reopen"
+    "test:projects:reopen": "node scripts/test-projects.mjs --reopen",
+    "test:storyboard-apply": "node scripts/test-storyboard-apply.mjs",
+    "test:storyboard-apply:reopen": "node scripts/test-storyboard-apply.mjs --reopen"
   },
   "dependencies": {
     "react": "19.3.0",

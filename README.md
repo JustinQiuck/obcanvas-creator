@@ -10,6 +10,14 @@
 
 本地开发根目录：`/Users/aliceboy/项目文件/闲来无事/obcanvas-creator`。后续源码、开发记录及从原画布复用的文件统一放在本仓库，复制后以本仓库版本为准。
 
+## GS01a 开发候选（未更新正式试用版）
+
+已实现分镜 Skill 选择/自定义、作品方向，以及预览确认后保存正式镜头。原有资产、视频和采用决定保留；失败可继续，历史预览可回查。全片顺序与生成段仍按后续小步骤实现。
+
+真实 Grok 4.5 对照已完成，但镜头决策质量未达计划门槛，因此目前只在隔离测试库验证。本开发构建沿用 0.8.0 版本号，不代表新版本发布；详细证据及限制见 [GS01a 验证](docs/validation/storyboard-gs01a.md)。
+
+隔离测试：`npm run prepare:test-vault`、`npm run launch:test-vault` 后执行 `npm run test:storyboard-apply`；完整重启隔离实例后执行 `npm run test:storyboard-apply:reopen`。以下带版本号的操作说明保留历史行为。
+
 ## 要解决的问题
 
 打开一场戏，就能回答：有哪些计划镜头、已经生成哪些视频、采用了哪个版本、还缺什么，以及哪张截图将用于后续镜头。

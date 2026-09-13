@@ -2,13 +2,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import type { Vault } from 'obsidian';
-import { newRecord, parseRecord, patchAssetDetails, patchLinks, patchMedia } from '../src/model';
+import { newRecord, parseRecord, patchAssetDetails, patchLinks, patchMedia, draftOf } from '../src/model';
 import { ChatClient, type Transport } from '../src/ai/chat-client';
 import { parseStoryboardSuggestions, parseStoryboardTask, storyboardContext, storyboardInputVersion } from '../src/ai/storyboard-model';
 import { StoryboardService } from '../src/ai/storyboard-service';
 import { storyboardPrompt, type StoryboardSkill } from '../src/ai/storyboard-skill';
 import { VaultRecords } from '../src/storage/vault-records';
 import { VaultStoryboards } from '../src/storage/vault-storyboards';
+import { VaultStoryboardSettings, STORYBOARD_SETTINGS_PATH, parseStoryboardSettings } from '../src/storage/vault-storyboard-settings';
 
 class MemoryVault {
   files = new Map<string, { path: string; extension: string; source: string }>();
@@ -125,4 +126,99 @@ test('分镜规则协议明确静态首帧和编辑时长边界', () => {
   assert.ok(prompt.includes('成片计划时长')); assert.ok(prompt.includes('不是 MiniMax H3 的生成时长'));
   const packaged = readFileSync(new URL('../skills/drama-storyboard/SKILL.md', import.meta.url), 'utf8');
   assert.ok(packaged.includes('不展示性器官、裸露细节或行为过程')); assert.ok(packaged.includes('画外行为持续／停止'));
+});
+
+test('确认分镜入卡保留各拍摄字段、资产关系；重复确认不复制或覆盖已选视频', async () => {
+  const { vault, service, records } = await setup(); await service.start('script-a', 'view');
+  await service.apply(service.getSnapshot().tasks[0]!);
+  const task = service.getSnapshot().tasks[0]!, target = task.application![0]!.shotId;
+  assert.equal(task.status, 'complete');
+  const formal = await records.requireRecord(target);
+  assert.equal(formal.body, shot.action); assert.equal(formal.keyframePrompt, shot.keyframePrompt); assert.equal(formal.plannedDuration, '4');
+  assert.equal(formal.start, shot.start); assert.equal(formal.end, shot.end); assert.equal(formal.sound, shot.sound);
+  assert.ok(formal.links?.some(l => l.from === 'r:script-a')); assert.ok(formal.links?.some(l => l.from === 'r:person-a'));
+  const file = vault.files.get(formal.path)!; file.source = patchMedia(file.source, target, () => [{ id: 'video', path: 'clip.mp4', decision: 'adopted' }]);
+  const preserved = file.source; await service.apply(task);
+  assert.equal(file.source, preserved); assert.equal(records.getSnapshot().records.filter(r => r.kind === 'shot').length, 1);
+  assert.deepEqual((await records.requireRecord('scene-a')).shotOrder, [target]); service.dispose();
+});
+
+test('入卡顺序写入失败后恢复固定 ID，已写镜头的人工编辑不会被重试覆盖', async () => {
+  const { vault, service, records, storage } = await setup(); await service.start('script-a', 'view');
+  let fail = true; vault.beforeProcess = path => { if (fail && path.endsWith('scene.md')) { fail = false; throw new Error('模拟顺序保存失败'); } };
+  await assert.rejects(service.apply(service.getSnapshot().tasks[0]!), /顺序保存失败/);
+  const partial = service.getSnapshot().tasks[0]!; assert.equal(partial.status, 'partial');
+  const id = partial.application![0]!.shotId, r = await records.requireRecord(id);
+  await records.save(r, { ...draftOf(r), body: '人工保留的新动作' });
+  service.dispose();
+  const reopened = new StoryboardService(records, storage, new ChatClient(ok), () => settings, () => '', storyboardSkill); await reopened.refresh();
+  await reopened.apply(reopened.getSnapshot().tasks[0]!);
+  assert.equal((await records.requireRecord(id)).body, '人工保留的新动作');
+  assert.equal(records.getSnapshot().records.filter(r => r.kind === 'shot').length, 1);
+  assert.equal(reopened.getSnapshot().tasks[0]!.status, 'complete'); reopened.dispose();
+});
+
+test('入卡前再次检查剧本文字，检查后变更不能写入新镜头', async () => {
+  const { service, records } = await setup(); await service.start('script-a', 'view');
+  const task = service.getSnapshot().tasks[0]!, before = await records.requireRecord('script-a');
+  await records.save(before, { ...draftOf(before), body: before.body + ' 内容已更新。' });
+  await assert.rejects(records.ensureStoryboardShot(before, task.items[0]!, task.id, crypto.randomUUID(), false), /入卡检查后已更新/);
+  assert.equal(records.getSnapshot().records.some(r => r.kind === 'shot'), false); service.dispose();
+});
+
+test('已保存的第一镜删除后，部分任务恢复不会重建它；保留后续已写内容', async () => {
+  const two: Transport = async () => ({ status: 200, text: JSON.stringify({ choices: [{ message: { content: JSON.stringify({ shots: [shot, { ...shot, title: '第二镜' }] }) } }] }) });
+  const { vault, service, records } = await setup(two); await service.start('script-a', 'view');
+  let orders = 0; vault.beforeProcess = path => { if (path.endsWith('scene.md') && ++orders === 2) throw new Error('第二次排序失败'); };
+  await assert.rejects(service.apply(service.getSnapshot().tasks[0]!), /排序失败/);
+  const partial = service.getSnapshot().tasks[0]!, first = await records.requireRecord(partial.application![0]!.shotId);
+  assert.equal(partial.application![0]!.applied, true); vault.files.delete(first.path); vault.beforeProcess = undefined;
+  await assert.rejects(service.apply(partial), /不会从历史任务重新创建/);
+  assert.equal(vault.files.has(first.path), false); service.dispose();
+});
+
+test('过期或缺镜预览不能入卡，冻结映射不能继续编辑或伪造完成', async () => {
+  const { service, records } = await setup(); await service.start('script-a', 'view'); const task = service.getSnapshot().tasks[0]!;
+  const script = await records.requireRecord('script-a'); await records.save(script, { title: script.title, body: script.body + ' 原文已变。' });
+  await assert.rejects(service.apply(task), /剧本或关联资产已更新/);
+  assert.equal(records.getSnapshot().records.some(r => r.kind === 'shot'), false);
+  assert.throws(() => parseStoryboardTask(JSON.stringify({ ...task, status: 'complete' })), /应用进度/);
+  assert.throws(() => service.editDraft({ ...task, status: 'partial' }, task), /已冻结/); service.dispose();
+  const broken: Transport = async () => ({ status: 200, text: JSON.stringify({ choices: [{ message: { content: JSON.stringify({ shots: [shot, { ...shot, evidence: '非原文' }] }) } }] }) });
+  const second = await setup(broken); await second.service.start('script-a', 'view');
+  await assert.rejects(second.service.apply(second.service.getSnapshot().tasks[0]!), /未通过检查/); second.service.dispose();
+});
+
+test('分镜规则独立保存项目默认和剧本方向，MV 缺方法或音乐依据时阻止请求', async () => {
+  const { vault } = await setup(); const prefs = new VaultStoryboardSettings(vault.port(), storyboardSkill); await prefs.refresh();
+  assert.equal(vault.files.has(STORYBOARD_SETTINGS_PATH), false);
+  const custom = await prefs.saveCustom('MV 长镜头', '按音乐时间点组织画面，不预设快节奏。');
+  const choice = { skillId: custom.id, format: 'mv' as const, direction: '固定观察', musicTiming: '0–4 秒：前奏，建立空间。' };
+  await prefs.saveChoice('script-a', 'legacy-project', choice, true);
+  assert.equal(prefs.resolve('script-a', 'legacy-project').skill.id, custom.id);
+  await prefs.saveChoice('script-a', 'legacy-project', { ...choice, musicTiming: '' });
+  assert.throws(() => prefs.resolve('script-a', 'legacy-project'), /音乐 MV/);
+  await prefs.saveChoice('script-a', 'legacy-project', choice, false, true);
+  const reopened = new VaultStoryboardSettings(vault.port(), storyboardSkill); await reopened.refresh();
+  assert.deepEqual(reopened.choice('script-a', 'legacy-project'), choice);
+  assert.equal(reopened.choice('script-a', 'another-project').skillId, storyboardSkill.id);
+  assert.throws(() => parseStoryboardSettings(JSON.stringify({ version: 1, projects: {}, scripts: {}, custom: [{ ...custom, stage: 'assets' }] })), /损坏/);
+  prefs.dispose(); reopened.dispose();
+});
+
+test('分镜配置写入冲突与文件删除拒绝覆盖；任务保存启动时规则与方向快照', async () => {
+  const { vault, records, storage } = await setup(); const prefs = new VaultStoryboardSettings(vault.port(), storyboardSkill); await prefs.refresh();
+  const custom = await prefs.saveCustom('缓慢观察', '只用有明确理由的固定机位。');
+  const choice = { skillId: custom.id, format: 'drama' as const, direction: '固定观察', musicTiming: '' };
+  await prefs.saveChoice('script-a', 'legacy-project', choice);
+  let release!: (r: Awaited<ReturnType<Transport>>) => void; let called = false;
+  const service = new StoryboardService(records, storage, new ChatClient(async () => { called = true; return new Promise(done => { release = done; }); }), () => settings, () => '', storyboardSkill, prefs);
+  const running = service.start('script-a', 'view');
+  await prefs.saveChoice('script-a', 'legacy-project', { ...choice, direction: '快节奏' });
+  while (!called) await new Promise(done => setTimeout(done, 1)); release(await ok({ url: '', method: '', headers: {}, body: '' })); await running;
+  const task = service.getSnapshot().tasks[0]!; assert.equal(task.direction?.direction, '固定观察'); assert.equal(task.skill.id, custom.id); assert.ok(task.skill.prompt.includes('固定观察'));
+  const stale = new VaultStoryboardSettings(vault.port(), storyboardSkill); await stale.refresh();
+  await prefs.saveCustom('新的', '新规则'); await assert.rejects(stale.saveCustom('冲突', '冲突规则'), /其他窗口修改/);
+  vault.files.delete(STORYBOARD_SETTINGS_PATH); await prefs.refresh(); assert.ok(prefs.getSnapshot().error.includes('已移除')); assert.equal(vault.files.has(STORYBOARD_SETTINGS_PATH), false);
+  service.dispose(); prefs.dispose(); stale.dispose();
 });

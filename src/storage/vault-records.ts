@@ -216,6 +216,27 @@ export class VaultRecords {
     });
     await this.refresh();
   }
+  async ensureStoryboardShot(script: FilmRecord, item: import('../ai/storyboard-model').StoryboardItem, taskId: string, shotId: string, applied: boolean) {
+    const { entries, problems } = await this.scan();
+    if (problems.length) throw new RecordError('项目有无法读取的记录，请先修复。');
+    const all = entries.map(e => e.record), latest = all.find(r => r.id === script.id), scene = all.find(r => r.id === script.sceneId && r.kind === 'scene');
+    if (!latest || latest.kind !== 'script' || !scene || latest.sceneId !== script.sceneId || projectOf(latest, all) !== projectOf(script, all) || projectOf(scene, all) !== projectOf(script, all)) throw new ConflictError('剧本或场次归属已改变，请重新核对。');
+    if (latest.body !== script.body || latest.title !== script.title || JSON.stringify(latest.links) !== JSON.stringify(script.links)) throw new ConflictError('剧本在入卡检查后已更新，请重新核对；未创建本镜。');
+    const origin = `分镜任务：${taskId}/${item.id}`, existing = all.find(r => r.id === shotId);
+    if (existing) {
+      if (existing.kind !== 'shot' || existing.source !== origin || existing.sceneId !== script.sceneId || projectOf(existing, all) !== projectOf(script, all)) throw new ConflictError('正式镜头编号或来源已变化，未覆盖。');
+      // A retry must not overwrite human edits made after the first successful write.
+    } else {
+      if (applied) throw new RecordError('已应用镜头被删除，请恢复原笔记；不会从历史任务重新创建。');
+      const path = `${PROJECT_ROOT}/镜头-${shotId}.md`;
+      let raw = newRecord('shot', shotId, item.title, script.sceneId, projectOf(script, all));
+      raw = patchRecord(raw, parseRecord(raw, path)!, { title: item.title, body: item.action, intent: item.intent, framing: item.framing, camera: item.camera, source: origin, start: item.start, end: item.end, sound: item.sound, keyframePrompt: item.keyframePrompt, plannedDuration: String(item.plannedDurationSeconds) });
+      raw = patchLinks(raw, shotId, () => [{ id: crypto.randomUUID(), from: `r:${script.id}`, role: '剧情拆分' }, ...(script.links ?? []).filter(l => l.role === '拍摄资产').map(l => ({ ...l, id: crypto.randomUUID() }))]);
+      await this.vault.create(path, raw);
+    }
+    await this.appendOrder(script.sceneId!, shotId);
+    return this.requireRecord(shotId);
+  }
   private async appendOrder(sceneId: string, id: string) {
     const { entries } = await this.scan();
     const scene = entries.find(e => e.record.id === sceneId && e.record.kind === 'scene');
